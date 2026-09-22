@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
+  "name": "better-neighbors",
+  "description": "PD Intelligence skills for Claude, from BetterNeighborsAI / Public Democracy",
+  "owner": {
+    "name": "BetterNeighborsAI",
+    "email": "support@better-neighbors.ai"
+  },
+  "plugins": [
+    {
+      "name": "pd-intelligence",
+      "displayName": "PD Intelligence",
+      "source": "./plugins/pd-intelligence",
+      "description": "Skills for turning PD Intelligence social data into reports people read: navigation and metric semantics, briefings, post/comment deep-dives, creator analysis, bulk pulls with local caching, news briefings, report rendering as a written document, an interactive data story, or a slide deck, tag and roster curation, and publishing/sharing through PD Docs",
+      "version": "1.0.1",
+      "author": {
+        "name": "Public Democracy"
+      },
+      "homepage": "https://intel.publicdemocracy.io",
+      "category": "intelligence"
+    }
+  ]
+}
