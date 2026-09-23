@@ -61,7 +61,7 @@ it into the spine, whatever format you are about to render.
   publishes no share or save counts; comment text is not collected for
   X/Twitter.
 - **Never build a "limitations" or "what the data can't tell you" section out of
-  those zeros.** Users flag this every time. The test: if the caveat would still
+  those zeros.** The test: if the caveat would still
   be true on a perfectly ingested dataset, it is not a caveat — it is method.
   One line in the method note, not a panel.
 - **Never average post-level `engagement_rate`.** It is forced to `0.0`
@@ -153,8 +153,8 @@ Follow `pd-intel-documents` for the sharing rules and their failure modes.
 - Recommendations trace back to a pattern in the data, or they are cut.
 - If the evidence is thin, show that. Do not stretch one active post into a
   trend — say it is one post.
-- **Write like a person.** Reviewers call the failure mode "Claudenglish" and it
-  is worst in openings and section intros. Put the finding and its number in the
+- **Write like a person.** Machine-sounding prose is worst in openings and
+  section intros. Put the finding and its number in the
   first sentence, in the words a colleague would use. Cut throat-clearing ("it's
   worth noting", "this suggests that"), abstract scene-setting, and
   paired-clause constructions ("not just X, but Y"). If a sentence would survive

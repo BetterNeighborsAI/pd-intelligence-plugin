@@ -113,9 +113,10 @@ split it finer (month → week → day). Never let a partition run past ~40
 pages.
 
 **Do not derive partition sizes by dividing the total by the number of
-months.** Volume is wildly non-uniform — a dataset that averages 3,000
-posts/month can have 17 in an early month and 8,800 in a recent one, because
-accounts get added over time and backfills land unevenly. Sizing by the
+months.** Volume is wildly non-uniform — a dataset that averages a few
+thousand posts a month can have a handful in an early month and several times
+the average in a recent one, because accounts get added over time and
+backfills land unevenly. Sizing by the
 average gives you partitions that are 4× too big exactly where the data is
 densest.
 
@@ -297,8 +298,8 @@ The rest of the discipline:
 
 - **`search` is a substring match, not a boolean query.** The data explorer
   in the web app supports `AND` / `OR` / `NOT` / quoted phrases — the MCP
-  `search` parameter does **not**. Passing `search: "climate AND biden"`
-  matches the literal string `climate AND biden` and returns almost nothing,
+  `search` parameter does **not**. Passing `search: "launch AND recap"`
+  matches the literal string `launch AND recap` and returns almost nothing,
   with no error. This is a silent wrong answer, and on a bulk pull it means
   caching an empty or near-empty set and reporting it as complete. One
   keyword per pull; combine locally, or partition across several

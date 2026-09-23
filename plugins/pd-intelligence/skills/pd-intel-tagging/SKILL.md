@@ -15,8 +15,8 @@ These tools change shared data. Confirm before you write.
 
 1. `list_datasets`, then pass the integer `id` everywhere.
 2. `list_tags` (use `query` to search by name) to see what already exists.
-   **Reuse an existing tag rather than creating a near-duplicate** — "SNAP",
-   "snap", and "SNAP Campaign" as three tags is the most common mess these
+   **Reuse an existing tag rather than creating a near-duplicate** — "Launch",
+   "launch", and "Launch Campaign" as three tags is the most common mess these
    tools create.
 3. Resolve the entities you intend to tag to their **internal `id`s** with the
    search tools first. Never guess an id.

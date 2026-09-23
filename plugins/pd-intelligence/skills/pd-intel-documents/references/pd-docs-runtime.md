@@ -5,8 +5,8 @@ one permission: `allow-scripts`. Not `allow-same-origin`, not `allow-forms`, not
 `allow-popups`.
 
 That single line decides what a published document can and cannot do, and it is
-not negotiable — handing uploaded HTML the app origin would hand it the app's
-cookies, storage and Firebase session. Assume it applies everywhere: the
+not negotiable — it is what keeps published HTML isolated from the app around
+it. Assume it applies everywhere: the
 dashboard viewer, the editor preview, the standalone PD Docs reader, the
 fullscreen dialog, and explorer thumbnails.
 
@@ -65,11 +65,3 @@ click through it:
 What to look for: does it render at all (a storage throw shows as a blank
 frame), do the charts draw, does the console show a blocked-API error, and can
 a reader still get at every source URL you cited.
-
-## One surface differs
-
-The legacy direct-serve route `/d/{token}` sends its sandbox as a CSP header
-with `allow-scripts allow-popups`, so links *can* open there. Do not design for
-it — every in-app surface, including the PD Docs reader people actually receive,
-is the stricter `allow-scripts`. Build for the strict case and the permissive
-one takes care of itself.

@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "pd-intelligence",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Skills for turning PD Intelligence social data into reports people read: navigation and metric semantics, briefings, post/comment deep-dives, creator analysis, bulk pulls with local caching, news briefings, report rendering as a written document, an interactive data story, or a slide deck, tag and roster curation, and publishing/sharing through PD Docs",
   "author": {
     "name": "Public Democracy",

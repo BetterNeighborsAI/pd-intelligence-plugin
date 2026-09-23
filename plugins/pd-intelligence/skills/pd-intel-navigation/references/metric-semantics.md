@@ -2,8 +2,7 @@
 
 Read this before writing any sentence that compares platforms, averages an
 engagement rate, or explains a zero. The failure mode below is the single most
-common defect in PD Intelligence reports, and it is reported back by users by
-name.
+common defect in reports built on this data.
 
 ## The one rule
 
@@ -25,8 +24,7 @@ Resolve which one you are looking at from the platform and the post's
 
 ## Framings that are wrong — do not write these
 
-These are real corrections from report reviews. Each treats normal platform
-behavior as a data-quality problem:
+Each of these treats normal platform behavior as a data-quality problem:
 
 | Wrong | Right |
 |---|---|
@@ -41,14 +39,12 @@ zero pipeline defects, it is not a caveat. It is how the platform works, and it
 belongs in the method note, not in a limitations section.
 
 Genuine data-quality caveats do exist and are worth flagging — a collection gap
-in a date range, an account that stopped being scraped, a backfill still
+in a date range, an account whose collection stopped, a backfill still
 running. Those are visible as a **break in a series that previously had
 values**, not as a metric that was never populated for that platform.
 
 ## What each platform publishes
 
-Verified against the ingestion parsers (`jobs/metric-processor/parser.py` and
-`backend/app/services/posts/apify_import.py` in the pd-intelligence repo).
 Platform coverage in any given dataset is a separate question — read the
 `platforms` map from `get_dashboard_stats` to see which of these a dataset
 actually carries.
@@ -114,11 +110,6 @@ A creator's rate is therefore the views-weighted aggregate of their accounts,
 computed the same way, and the two are comparable. A creator whose rate differs
 from one of their handles is showing you a real mix effect across their
 accounts, not a methodology gap — don't report it as a data error.
-
-(This holds as of the fix that brought creator stats onto the same invariant as
-account stats. If you are reading a historical export or a stale deployment,
-creator rates there may still be the older, un-masked figure and will run high
-where view coverage is partial.)
 
 ### `needs_attention` behaves the same across entity types
 

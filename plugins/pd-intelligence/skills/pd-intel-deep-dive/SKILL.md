@@ -65,6 +65,6 @@ quotes, counts, and ids — not vibes.
 - **A missing metric is not a finding.** Threads publishes no view count and
   Instagram publishes none on photos or carousels, so a post's `0` views says
   nothing about how the post landed. Judge reach only on platforms that
-  publish it. Judge reach only on platforms that publish it, and never write a
+  publish it, and never write a
   caveat about "missing data" for a metric a platform simply never publishes —
   that is method, not a limitation.

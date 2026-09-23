@@ -75,6 +75,6 @@ mandatory template — but never pad with unverified claims.
   content, creators, audience reaction, anomalies/watch items.
 - **Write it the way you'd say it.** Put the finding and its number in the
   first sentence. No throat-clearing, no abstract scene-setting before the
-  point, no "not just X, but Y" constructions — readers call that register
-  "Claudenglish" and it makes a briefing harder to skim.
+  point, no "not just X, but Y" constructions — that register reads as
+  machine-written and makes a briefing harder to skim.
 - Every claim about a specific post needs its `post_url`.

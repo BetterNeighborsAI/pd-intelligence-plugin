@@ -51,8 +51,8 @@ counts; Instagram publishes them on Reels only, and publishes no share or save
 counts at all; comment text is not collected for X/Twitter.
 
 Never write these zeros up as missing data, a coverage gap, or a "what the data
-can't tell you" caveat — that is the most frequently corrected defect in PD
-Intelligence reports. Explain instead which metric was used per platform and
+can't tell you" caveat — that is the most common defect in reports built on
+this data. Explain instead which metric was used per platform and
 why.
 
 Two traps that produce wrong conclusions about specific people:

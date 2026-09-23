@@ -27,7 +27,7 @@ returns an empty or badly understated answer.
 |---|---|---|
 | Date window | `WHERE post_timestamp >= '2026-07-01'` | `date_from: "2026-07-01"`, `date_to: "2026-08-01"` |
 | Platform | `WHERE platform = 'tiktok'` | `platform: "tiktok"` |
-| Tags | joining and filtering `entity_tags` by name | `tag_names: "SNAP,Launch"` |
+| Tags | joining and filtering `entity_tags` by name | `tag_names: "Launch,Recap"` |
 
 The tool refuses a query that filters on time in SQL while hitting the cap, and
 says so. Always read `notes` and `tables_loaded` in the result to confirm what

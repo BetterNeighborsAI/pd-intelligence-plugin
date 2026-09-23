@@ -40,7 +40,7 @@ breakdowns, and time-windowed metrics.
    ranks creators that reported views, so call it a shortlist, not a census.
 2. **Find specific people**: `search_creators` — its keyword matches creator
    name, email, AND any linked account's username/display name, so searching
-   a handle finds its owner. Filters: `tag_names`, `is_veteran`, plus
+   a handle finds its owner. Filters include `tag_names`, plus
    `start_date`/`end_date` to window the metrics.
 3. **Profile**: `get_creator_detail` (id from results) adds program fields —
    `cohort`, `management`, `is_org`, `state`/`country`, `notes`.
