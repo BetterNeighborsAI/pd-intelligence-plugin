@@ -128,7 +128,10 @@ Offer it every time — an artifact sitting in a local file is not delivered.
 1. `publish_document` with `mime_type: "text/html"` for a rendered document or
    deck (`text/markdown` for a plain writeup), the dataset it covers as
    `dataset_id` for provenance, and a one-line `description` naming the period
-   and audience. Mind the 5 MB body cap.
+   and audience. Mind the 5 MB body cap. A rendered deck is already a file on
+   disk, so when you can run a shell, publish it with the upload flow instead
+   (`begin_document_upload` → `curl` PUT → `finish_document_upload`, see
+   `pd-intel-documents` § Large documents) — it costs no tokens for the body.
 2. **Keep the returned `id`.** Re-rendering later updates the same document via
    `document_id`; publishing the same title again just creates a duplicate.
 3. Ask who should see it, then `share_document`.

@@ -1,6 +1,6 @@
 ---
 name: pd-intel-documents
-description: Use when publishing, updating, sharing, or finding documents on PD Docs, PD Intelligence's document surface — "push this report to PD Intelligence", "publish this briefing or deck", "share this document with the team", "share it to a dataset", "send it to someone outside the org", "make it public", "get a shareable link", "who can see this document", "revoke access", "update the published report", "find the document I published", "read that document back". Covers publish_document, share_document, get_document_sharing, list_documents and read_document, plus the sandbox every published HTML document renders in. To build the document itself, use pd-intel-report.
+description: Use when publishing, updating, sharing, or finding documents on PD Docs, PD Intelligence's document surface — "push this report to PD Intelligence", "publish this briefing or deck", "share this document with the team", "share it to a dataset", "send it to someone outside the org", "make it public", "get a shareable link", "who can see this document", "revoke access", "update the published report", "find the document I published", "read that document back". Covers publish_document, share_document, get_document_sharing, list_documents and read_document, the large-document tools (begin_document_upload, append_document_chunk, finish_document_upload, get_document_download_url), plus the sandbox every published HTML document renders in. To build the document itself, use pd-intel-report.
 ---
 
 # PD Docs — Publishing, Sharing & Reading Documents
@@ -8,17 +8,19 @@ description: Use when publishing, updating, sharing, or finding documents on PD 
 PD Docs is PD Intelligence's document surface. It hosts what you produce —
 briefings, reports, decks, deep-dive writeups, notes — so people read it at a
 link instead of receiving pasted text or loose files, including people who have
-no PD Intelligence account. Five tools cover the whole lifecycle:
+no PD Intelligence account. These tools cover the whole lifecycle:
 
 | Goal | Tool |
 |------|------|
 | Create a document / replace one you own | `publish_document` |
+| Same, for a large body | `begin_document_upload` → send → `finish_document_upload` (see **Large documents**) |
 | Change who can see a document you own | `share_document` |
 | Check how any readable document is shared | `get_document_sharing` |
 | Find a document you can read | `list_documents` |
-| Read one document's full body | `read_document` |
+| Read one document's body | `read_document` (paged) or `get_document_download_url` |
 
-`publish_document` and `share_document` write; the other three read.
+`publish_document`, `share_document`, `append_document_chunk` and
+`finish_document_upload` write; the rest read.
 The server has other write tools outside this skill — tags and creators (see
 `pd-intel-tagging` and `pd-intel-creators`) — but none of them are involved
 here: publishing a document never changes tracked source data.
@@ -35,6 +37,9 @@ here: publishing a document never changes tracked source data.
   `mime_type` to keep the current type (passing one converts the document).
 - Body limit is 5 MB of UTF-8 text. Large self-contained HTML decks can
   exceed this — check the size first and trim embedded assets if needed.
+- Anything bigger than a short report should not go through `publish_document`
+  at all — every byte of `content` is a token you write out. Use the upload
+  flow in **Large documents**.
 - `dataset_id` records provenance only; it grants nobody access, and setting
   it requires the `documents_manage` capability on that dataset. Access is
   entirely `share_document`'s job.
@@ -119,6 +124,52 @@ are not interchangeable:
 Revoking public access invalidates the token, so a re-published public link is
 a **new** URL and every circulated copy of the old one is dead.
 
+## Large documents
+
+Use the upload flow instead of `publish_document` when the body is more than
+~100 KB, or whenever it already exists as a file on disk. It is the same
+publish — same gate, same 5 MB cap, same result — split into steps.
+
+1. `begin_document_upload(dataset_id?, document_id?, mime_type?)` — these
+   three are set **here**, not at finish. Returns `upload_token` and
+   `upload_url`. Both last one hour.
+2. Send the body, one of two ways:
+   - **Direct — if you can run a shell** (Claude Code, Cowork, Codex) and
+     `upload_url` is not null. Write the body to a file first, then PUT it in
+     one request. No auth header, no content type:
+
+     ```bash
+     curl -sf -X PUT --upload-file deck.html "<upload_url>"
+     ```
+
+     The file goes straight to storage. None of it passes through you, so it
+     costs no tokens and is the fastest path. Always quote the URL.
+   - **Chunked — otherwise**, or when `upload_url` is null (the server cannot
+     sign links, e.g. a local backend). Split the body into pieces and call
+     `append_document_chunk(upload_token, index, content)` once per piece,
+     `index` counting from 0. ~100 KB pieces are reliable; the server accepts
+     up to 1 MB each and 64 pieces. Split between characters, never inside
+     one. A failed piece is safe to re-send with the same `index`.
+3. `finish_document_upload(upload_token, title, description?)` — publishes and
+   returns `{id, title, slug, visibility, updated}` exactly like
+   `publish_document`. If it names a missing index, re-send that piece and
+   call finish again; nothing was lost.
+
+To revise a large document, pass its `document_id` to `begin_document_upload`
+and omit `mime_type` to keep the current type.
+
+Reading a large document back:
+
+- `read_document` returns the body in windows of 100,000 characters by default
+  (`max_chars` up to 500,000). If `has_more` is true, call again with
+  `offset=next_offset` until it is false.
+- If you can run a shell, `get_document_download_url(document_id)` is cheaper:
+  one `curl -sf -o deck.html "<download_url>"` saves the body to disk without
+  paging it through you. The link lasts 15 minutes and works for **anyone**
+  holding it — use it yourself, never hand it to the user as a way to share.
+  Sharing is `share_document`'s job. If `download_url` is null, fall back to
+  `read_document`.
+
 ## Find and read
 
 - `list_documents(query?, limit?)` returns **metadata only** for everything you
@@ -127,7 +178,8 @@ a **new** URL and every circulated copy of the old one is dead.
   matched against title, slug and description; `limit` defaults to 50. Drafts
   never appear.
 - `read_document(document_id)` returns that metadata plus `content`, the body
-  as text.
+  as text — the whole body when it fits in one window, otherwise the first
+  window (see **Large documents** for paging).
 - The `id` comes back as a **string**, and timestamps use `Z` wire format.
 - A draft, a document you cannot reach, and an id that never existed all fail
   **identically** — so a not-found tells you nothing about whether the document
@@ -158,7 +210,8 @@ or source links in it.
 ## Typical flows
 
 - **Deliver a report:** build it with `pd-intel-report` → `publish_document`
-  with the right `mime_type` and the source `dataset_id` → `share_document` to
+  (or the upload flow for a large deck) with the right `mime_type` and the
+  source `dataset_id` → `share_document` to
   the requested audience → confirm with title, audience, and the right link.
   When the audience includes anyone outside the org, say explicitly that they
   were **not** notified and hand over `reader_url`.

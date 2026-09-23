@@ -123,8 +123,8 @@ Distribute puts it in PD Docs. Curation (`pd-intel-tagging`), bulk extraction
 | Audience overlap between accounts | `get_cross_account_commenters` (reads the full table — do not reimplement in SQL) |
 | Create/edit/delete tags, tag entities in bulk | `create_tag`, `update_tag`, `delete_tag`, `tag_entities` — **writes**; see the `pd-intel-tagging` skill |
 | Add/edit/remove creators | `create_creator`, `update_creator`, `delete_creators` — **writes**, need `creators_manage`; see the `pd-intel-creators` skill |
-| Find / re-read a document already published | `list_documents` (metadata, `query` substring match), `read_document` (full body) — reads; drafts never appear |
-| Publish / share / audit a document | `publish_document`, `share_document`, `get_document_sharing` — **writes**; see the `pd-intel-documents` skill |
+| Find / re-read a document already published | `list_documents` (metadata, `query` substring match), `read_document` (body, paged), `get_document_download_url` (signed link for a shell fetch) — reads; drafts never appear |
+| Publish / share / audit a document | `publish_document`, `begin_document_upload` / `append_document_chunk` / `finish_document_upload` (large bodies), `share_document`, `get_document_sharing` — **writes**; see the `pd-intel-documents` skill |
 | News coverage, media framing, headline trends | `get_news_briefing`, `list_news_dates`, `get_news_outlet`, `get_news_roundup`, `get_news_trend`, `get_news_word_cloud` — **no `dataset_id`**; global, need the `news` entitlement, may be absent from your tools entirely; see the `pd-intel-news` skill |
 | Podcast people, episodes, transcripts | `podiverse_search_people`, `podiverse_get_person_activity`, `podiverse_get_podcast_episodes`, `podiverse_get_episode_transcript` — **no `dataset_id`**; global, need the `Podiverse-MCP` entitlement, and are absent from your tool list entirely without it |
 
