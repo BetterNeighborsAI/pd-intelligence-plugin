@@ -7,14 +7,14 @@ description: Use whenever working with PD Intelligence data (the PD Intelligence
 
 PD Intelligence is Public Democracy's social media intelligence platform. The
 MCP server exposes tools over tracked posts, accounts, creators, and comments
-across platforms, plus a global news briefing. Most are read-only; a small
+across platforms, plus global news coverage tools. Most are read-only; a small
 write surface covers tags, creators, and documents.
 
 ## Always start here
 
 1. Call `list_datasets` first. Every dataset-scoped tool requires a
-   `dataset_id` (integer `id` from the results). The one exception is
-   `get_news_briefing`, which is global — see the news row below.
+   `dataset_id` (integer `id` from the results). The exceptions are the
+   news and podcast tools, which are global — see their rows below.
 2. Match the user's request to a dataset by name/description. If it's
    ambiguous which dataset they mean, ask — don't guess.
 3. Datasets can be empty or newly created. If a query returns nothing,
@@ -125,7 +125,7 @@ Distribute puts it in PD Docs. Curation (`pd-intel-tagging`), bulk extraction
 | Add/edit/remove creators | `create_creator`, `update_creator`, `delete_creators` — **writes**, need `creators_manage`; see the `pd-intel-creators` skill |
 | Find / re-read a document already published | `list_documents` (metadata, `query` substring match), `read_document` (full body) — reads; drafts never appear |
 | Publish / share / audit a document | `publish_document`, `share_document`, `get_document_sharing` — **writes**; see the `pd-intel-documents` skill |
-| Daily news / media framing | `get_news_briefing` — **no `dataset_id`**; global, needs the `news` entitlement, may be absent from your tools entirely |
+| News coverage, media framing, headline trends | `get_news_briefing`, `list_news_dates`, `get_news_outlet`, `get_news_roundup`, `get_news_trend`, `get_news_word_cloud` — **no `dataset_id`**; global, need the `news` entitlement, may be absent from your tools entirely; see the `pd-intel-news` skill |
 | Podcast people, episodes, transcripts | `podiverse_search_people`, `podiverse_get_person_activity`, `podiverse_get_podcast_episodes`, `podiverse_get_episode_transcript` — **no `dataset_id`**; global, need the `Podiverse-MCP` entitlement, and are absent from your tool list entirely without it |
 
 ## Pitfalls (verified against live data)
