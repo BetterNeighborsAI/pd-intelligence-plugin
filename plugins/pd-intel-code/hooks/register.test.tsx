@@ -848,3 +848,36 @@ test('an Instagram account with no published views says so', async ($, on) => {
   await ui.press({ key: 'account-quietacct' })
   expect(await ui.find({ text: 'views not published · 10 likes · 2 comments' })).toBeDefined()
 })
+
+// The desktop's first click on the side panel, while the chat box has the keys, only moves the focus.
+test('a click that only focuses the side panel still presses its button, once', async ($, on) => {
+  let listed = 0
+  connector(on, {}, SERVER, (tool, args) => {
+    if (tool === 'list_datasets') listed++
+    return answer(tool, args)
+  })
+  on('ui.focus', () => ({}))
+  const click = (element: string) => $.ui.focus({ component: 'Pane', requestId: 'pd', element, origin: { kind: 'person' } })
+  await $.command.run(typed('pd-dataset', '16'))
+  const side = await $.ui.mount({ plugin: 'pd-intel-code', surface: 'desktop', ...SIDE })
+
+  await click('today')
+  expect(await side.find({ key: 'back' })).toBeDefined()
+  await side.press({ key: 'back' })
+
+  // Should the click's own press come after all, it is not run a second time. The panel's own
+  // press is not awaited by the focus move: a few round trips let it run.
+  const settle = async () => {
+    for (let i = 0; i < 30; i++) await side.find({ key: 'refresh' })
+  }
+  const before = listed
+  await click('refresh')
+  await side.press({ key: 'refresh' })
+  await settle()
+  expect(listed).toBe(before + 1)
+
+  // Once the panel holds the keys, moving the focus (Tab) presses nothing.
+  await side.redraw({ ...SIDE.props, isFocused: true })
+  await click('today')
+  expect(await side.find({ key: 'back' })).toBeUndefined()
+})

@@ -104,20 +104,32 @@ export function drawPanel(els: Els, surface: RenderSurface, data: PanelData, act
   const dot = (platform: string) => (platform === 'Threads' ? 'text' : platformColor(platform))
   const platformTotal = g ? g.platforms.reduce((s, x) => s + x.posts.value, 0) || 1 : 1
   const share = (n: number) => `${((n / platformTotal) * 100).toFixed(1)}%`
+  // One post: who and where, what it said, then what to do with it on a row of its own.
   const postRow = (p: PdTopPost, i: number) => (
     <Box key={`post-${p.postId}`} flexDirection="column">
       <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
         <Text bold>{`${i + 1}. @${p.author}`}</Text>
         <Text color={dot(p.platform)}>●</Text>
         <Text dimColor>{`${p.platform} · ${viewsLabel(p.platform, p.views, p.contentType)}`}</Text>
-        {current && (
-          <Button key={`why-${p.postId}`} label="Ask Claude: why?" onPress={() => actions.ask(whyPrompt(current, p), `Why @${p.author}'s post did well`)} />
-        )}
-        {p.id !== undefined && sc.kind !== 'post' && (
-          <Button key={`details-${p.postId}`} label="Details" onPress={() => actions.show({ kind: 'post', post: p })} />
-        )}
       </Box>
       <Text dimColor italic>{oneLine(p.text, 90)}</Text>
+      {(current || (p.id !== undefined && sc.kind !== 'post')) && (
+        <Box flexDirection="row" flexWrap="wrap" columnGap={1} marginTop={1}>
+          {p.id !== undefined && sc.kind !== 'post' && (
+            <Button key={`details-${p.postId}`} label="Details" onPress={() => actions.show({ kind: 'post', post: p })} />
+          )}
+          {current && (
+            <Button key={`why-${p.postId}`} label="Ask Claude: why?" onPress={() => actions.ask(whyPrompt(current, p), `Why @${p.author}'s post did well`)} />
+          )}
+        </Box>
+      )}
+    </Box>
+  )
+  // A home section: a titled card, as the tiles are, so each reads apart from the next.
+  const card = (key: string, title: string, body: JSX.Element) => (
+    <Box key={key} flexDirection="column" gap={1} borderStyle="round" borderDimColor paddingX={1}>
+      <Text dimColor>{title}</Text>
+      {body}
     </Box>
   )
   const act = ready(snap?.activity)
@@ -175,7 +187,7 @@ export function drawPanel(els: Els, surface: RenderSurface, data: PanelData, act
     )
 
   const homeBody = (
-    <Box key="home" flexDirection="column" gap={1}>
+    <Box key="home" flexDirection="column" gap={2}>
         {picker}
 
         {current && (
@@ -266,84 +278,90 @@ export function drawPanel(els: Els, surface: RenderSurface, data: PanelData, act
           </Box>
         )}
 
-        {current && (
-          <Box key="top" flexDirection="column">
-            <Text dimColor>TOP POSTS THIS WEEK</Text>
-            {pending('top-state', snap?.topPosts) ??
+        {current &&
+          card(
+            'top',
+            'TOP POSTS THIS WEEK',
+            pending('top-state', snap?.topPosts) ??
               (top && top.length === 0 ? (
                 <Text dimColor>No posts in the last 7 days.</Text>
               ) : (
-                <Box flexDirection="column" gap={1}>
+                <Box flexDirection="column" gap={2}>
                   {(top ?? []).map((p, i) => postRow(p, i))}
                 </Box>
-              ))}
-          </Box>
-        )}
+              )),
+          )}
 
-        {current && (
-          <Box key="weak" flexDirection="column">
-            <Text dimColor>NEEDS ATTENTION</Text>
-            {pending('weak-state', snap?.attention) ??
+        {current &&
+          card(
+            'weak',
+            'NEEDS ATTENTION',
+            pending('weak-state', snap?.attention) ??
               (weak && weak.length === 0 ? (
                 <Text dimColor>Nothing flagged.</Text>
               ) : (
-                <Box flexDirection="column" gap={1}>
+                <Box flexDirection="column" gap={2}>
                   {(weak ?? []).map(a => (
                     <Box key={`weak-${a.username}`} flexDirection="column">
                       <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
                         <Text bold>{`@${a.username}`}</Text>
                         <Text color={dot(a.platform)}>●</Text>
                         <Text dimColor>{a.platform}</Text>
-                        <Button
-                        key={`account-${a.username}`}
-                        label="Details"
-                        onPress={() => actions.show({ kind: 'account', account: { username: a.username, platform: a.platform } })}
-                      />
-                      <Button key={`look-${a.username}`} label="Ask Claude: look into it" onPress={() => actions.ask(lookPrompt(current, a), `Look into @${a.username}`)} />
                       </Box>
                       <Text dimColor>{`${plural(a.posts, 'post')} · ${compact(a.views)} ${a.views === 1 ? 'view' : 'views'}`}</Text>
+                      <Box flexDirection="row" flexWrap="wrap" columnGap={1} marginTop={1}>
+                        <Button
+                          key={`account-${a.username}`}
+                          label="Details"
+                          onPress={() => actions.show({ kind: 'account', account: { username: a.username, platform: a.platform } })}
+                        />
+                        <Button key={`look-${a.username}`} label="Ask Claude: look into it" onPress={() => actions.ask(lookPrompt(current, a), `Look into @${a.username}`)} />
+                      </Box>
                     </Box>
                   ))}
                 </Box>
-              ))}
-          </Box>
-        )}
+              )),
+          )}
 
-        {data.requests.length > 0 && (
-          <Box key="requests" flexDirection="column" gap={1} borderStyle="round" borderDimColor paddingX={1}>
-            <Text dimColor>REQUESTS TO CLAUDE</Text>
-            {data.requests.slice(0, 3).map(r => (
-              <Box key={`request-${r.id}`} flexDirection="column">
-                <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
-                  <Text bold>{r.label}</Text>
-                  <Text
-                    color={r.status === 'answered' ? 'success' : r.status === 'stopped' ? 'warning' : undefined}
-                    dimColor={r.status === 'sent'}
-                  >
-                    {REQUEST_STATUS[r.status]}
-                  </Text>
+        {data.requests.length > 0 &&
+          card(
+            'requests',
+            'REQUESTS TO CLAUDE',
+            <Box flexDirection="column" gap={2}>
+              {data.requests.slice(0, 3).map(r => (
+                <Box key={`request-${r.id}`} flexDirection="column">
+                  <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
+                    <Text bold>{r.label}</Text>
+                    <Text
+                      color={r.status === 'answered' ? 'success' : r.status === 'stopped' ? 'warning' : undefined}
+                      dimColor={r.status === 'sent'}
+                    >
+                      {REQUEST_STATUS[r.status]}
+                    </Text>
+                  </Box>
+                  {r.answer ? <Text dimColor>{plainPreview(r.answer, 200)}</Text> : null}
                   {r.status === 'answered' && (
-                    <Button key={`answer-${r.id}`} label="Show answer" onPress={() => actions.show({ kind: 'answer', requestId: r.id })} />
+                    <Box flexDirection="row" marginTop={1}>
+                      <Button key={`answer-${r.id}`} label="Show answer" onPress={() => actions.show({ kind: 'answer', requestId: r.id })} />
+                    </Box>
                   )}
                 </Box>
-                {r.answer ? <Text dimColor>{plainPreview(r.answer, 200)}</Text> : null}
-              </Box>
-            ))}
-          </Box>
-        )}
+              ))}
+            </Box>,
+          )}
 
-        {current && (
-          <Box key="questions" flexDirection="column">
-            <Text dimColor>ASK CLAUDE</Text>
-            <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
+        {current &&
+          card(
+            'questions',
+            'ASK CLAUDE',
+            <Box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={1}>
               {QUESTIONS.map((q, i) => (
                 <Button key={`question-${i}`} label={q.label} onPress={() => actions.ask(q.ask(current), q.label)} />
               ))}
-            </Box>
-          </Box>
-        )}
+            </Box>,
+          )}
 
-        <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={1}>
           {current && <Button key="explore" label="Explore" variant="primary" onPress={() => actions.run('pd-intel-code:explore')} />}
           {current && <Button key="report" label="Write a report" onPress={() => actions.run('pd-intel-code:report')} />}
           <Button key="sources" label={`Sources used (${calls})`} onPress={() => actions.run('pd-evidence')} />

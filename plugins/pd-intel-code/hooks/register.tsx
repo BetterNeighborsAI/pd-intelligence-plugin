@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, ResolveInput, ToolCallResult } from 'claude-code'
+import type { ButtonProps, Elements, EngineInterface, Register, RenderElement, ResolveInput, ToolCallResult, UiPressArgument } from 'claude-code'
 
 import type {
   PdAccountRef,
@@ -431,9 +431,29 @@ function formatLedger(entries: readonly PdEvidence[]): string {
   return [`PD Intelligence calls this session (${entries.length}):`, '', ...lines].join('\n')
 }
 
+// The desktop's first click on the side panel, while another place holds the keys, only
+// moves the focus onto the Button (ui.focus) and never presses it. The panel presses it
+// itself, by the closures its latest drawing gave each key. Module variables, as only
+// the drawing that is up matters: a reload starts them over.
+let paneFocused = false
+let paneButtons = new Map<string, (e: UiPressArgument) => void>()
+let clickPressed: { key: string; at: number } | null = null
+// A press for the same key this soon after the panel pressed it is that click's own.
+const CLICK_PRESS_MS = 1000
+
+// The element table, its Buttons noting their closures in `into`.
+function noteButtons(els: Elements[keyof Elements], into: Map<string, (e: UiPressArgument) => void>): Elements[keyof Elements] {
+  const Button = els.Button as (props: ButtonProps) => RenderElement
+  const noted = (props: ButtonProps) => {
+    into.set(props.key ?? props.label ?? '', props.onPress)
+    return Button(props)
+  }
+  return { ...els, Button: noted } as Elements[keyof Elements]
+}
+
 // The panel itself, drawn in the side panel or as /pd's row in the chat;
-// `extra` is what only one of the two adds.
-async function drawPanel($: EngineInterface, e: ResolveInput, extra?: JSX.Element) {
+// `extra` is what only one of the two adds, `buttons` collects the side panel's.
+async function drawPanel($: EngineInterface, e: ResolveInput, extra?: JSX.Element, buttons?: Map<string, (e: UiPressArgument) => void>) {
   const current = await read($, pinned)
   const held = await read($, snapshot)
   const data: PanelData = {
@@ -460,7 +480,8 @@ async function drawPanel($: EngineInterface, e: ResolveInput, extra?: JSX.Elemen
     back: () => show($, { kind: 'home' }),
     loadComments: () => loadComments($),
   }
-  return renderPanel($.ui.resolve(e), e.surface, data, actions, extra)
+  const els = $.ui.resolve(e)
+  return renderPanel(buttons ? noteButtons(els, buttons) : els, e.surface, data, actions, extra)
 }
 
 export const register: Register = on => {
@@ -563,7 +584,34 @@ export const register: Register = on => {
     return { text: formatLedger(await read($, ledger)) }
   })
 
-  on('ui.render', { component: 'Pane', requestId: PANE }, ($, e) => drawPanel($, e))
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    paneFocused = e.props.isFocused
+    const buttons = new Map<string, (e: UiPressArgument) => void>()
+    const tree = await drawPanel($, e, undefined, buttons)
+    paneButtons = buttons
+    return tree
+  })
+
+  // A person's focus landing on a Button while the panel did not hold the keys is a click (Tab
+  // moves only within a panel that holds them): press it, as the desktop did not.
+  on('ui.focus', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    const wasFocused = paneFocused
+    const moved = await next(e)
+    const press = e.element === undefined ? undefined : paneButtons.get(e.element)
+    if (moved.deny === undefined && !wasFocused && e.origin.kind === 'person' && e.element !== undefined && press) {
+      paneFocused = true
+      clickPressed = { key: e.element, at: await $.clock.now() }
+      press({ plugin: 'pd-intel-code', element: e.element, component: 'Pane', requestId: PANE, surface: 'desktop' })
+    }
+    return moved
+  }).catch(($, e, next) => next(e))
+
+  on('ui.press', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    const pressed = clickPressed
+    clickPressed = null
+    if (pressed && pressed.key === e.element && (await $.clock.now()) - pressed.at < CLICK_PRESS_MS) return { element: e.element }
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'CommandOutput', props: { command: 'pd' } }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
