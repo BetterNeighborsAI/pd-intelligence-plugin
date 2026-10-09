@@ -1,14 +1,57 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, ResolveInput, ToolCallResult } from 'claude-code'
 
-import type { PdDataset, PdEvidence, PdGlance, PdMetric } from '../types'
+import type {
+  PdAccountRef,
+  PdAccountView,
+  PdDataset,
+  PdPostView,
+  PdEvidence,
+  PdScreen,
+  PdSection,
+  PdSnapshot,
+  PdToday,
+  PdTopPost,
+} from '../types'
+import { drawPanel as renderPanel, summary, type PanelActions, type PanelData } from './panel'
+import {
+  DAY_MS,
+  GLANCE_DAYS,
+  MCP_TOOL,
+  PD_SIGNATURE,
+  SECTION_KEYS,
+  SERIES_DAYS,
+  startRequest,
+  type SectionKey,
+  activitySql,
+  blockedMessage,
+  dayKey,
+  followersSql,
+  isStale,
+  label,
+  lastDays,
+  parseJson,
+  platformKey,
+  pushRecent,
+  requestDone,
+  requestStarted,
+  rowsOf,
+  serverName,
+  shortName,
+  toAccountStats,
+  toActivity,
+  toAttention,
+  toCommentSummary,
+  toDatasets,
+  toFollowers,
+  toGlance,
+  toPostDetail,
+  toPosts,
+  toSummary,
+  toTopPosts,
+  topPostsSql,
+} from './data'
 
-// The PD Intelligence server is recognised by its tools, never by its name: the
-// connector is named differently per install (PD_Intelligence, claude_ai_PD_Intelligence,
-// whatever someone typed in `claude mcp add`). A server with both of these is PD.
-const PD_SIGNATURE = ['list_datasets', 'get_dashboard_stats'] as const
-// Any MCP tool but this mod's own; the hook checks the server is PD's.
-const MCP_TOOL = /^mcp__(?!pd-intel-code__)/
 const CHOOSE_TOOL = 'mcp__pd-intel-code__choose_dataset'
 // Writes that remove data or widen who can see it: always put to the person.
 const CONFIRM_TOOL = /^mcp__.+__(delete_tag|delete_creators|share_document)$/
@@ -19,7 +62,13 @@ const CONNECT_WAIT_MS = 1500
 const ledger = atom({ plugin: 'pd-intel-code', key: 'ledger' } as const, [])
 const datasets = atom({ plugin: 'pd-intel-code', key: 'datasets' } as const, null)
 const pinned = atom({ plugin: 'pd-intel-code', key: 'pinned' } as const, null)
-const glance = atom({ plugin: 'pd-intel-code', key: 'glance' } as const, null)
+const snapshot = atom({ plugin: 'pd-intel-code', key: 'snapshot' } as const, null)
+const screen = atom({ plugin: 'pd-intel-code', key: 'screen' } as const, { kind: 'home' })
+const today = atom({ plugin: 'pd-intel-code', key: 'today' } as const, null)
+const postView = atom({ plugin: 'pd-intel-code', key: 'postView' } as const, null)
+const accountView = atom({ plugin: 'pd-intel-code', key: 'accountView' } as const, null)
+const requests = atom({ plugin: 'pd-intel-code', key: 'requests' } as const, [])
+const recent = atom({ plugin: 'pd-intel-code', key: 'recent' } as const, [])
 const capture = atom({ plugin: 'pd-intel-code', key: 'capture' } as const, false)
 const notice = atom({ plugin: 'pd-intel-code', key: 'notice' } as const, null)
 const view = atom({ plugin: 'pd-intel-code', key: 'view' } as const, 'chat')
@@ -28,70 +77,6 @@ const pdServers = atom({ plugin: 'pd-intel-code', key: 'pdServers' } as const, {
 const PANE = 'pd'
 
 const EVIDENCE_ROOT = 'pd-intel-evidence'
-// The window the panel's "change" column covers.
-const GLANCE_DAYS = 7
-
-const PLATFORM_NAMES: Record<string, string> = {
-  facebook: 'Facebook',
-  instagram: 'Instagram',
-  tiktok: 'TikTok',
-  x_twitter: 'X',
-  youtube: 'YouTube',
-}
-
-const shortName = (tool: string) => tool.slice(tool.lastIndexOf('__') + 2)
-const serverName = (tool: string) => tool.slice('mcp__'.length, tool.lastIndexOf('__'))
-
-const grouped = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-
-function compact(n: number): string {
-  // Exact below 10,000; rounded to one decimal of K, M or B above it.
-  for (const [from, size, unit] of [[1e9, 1e9, 'B'], [1e6, 1e6, 'M'], [1e4, 1e3, 'K']] as const) {
-    if (Math.abs(n) >= from) return `${(n / size).toFixed(1).replace(/\.0$/, '')}${unit}`
-  }
-  return grouped(n)
-}
-
-const label = (d: PdDataset) => `${d.icon ? `${d.icon.trim()} ` : ''}${d.name}`
-
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return undefined
-  }
-}
-
-// list_datasets answers `{ result: [{ id, name, icon, ... }] }`.
-function toDatasets(parsed: unknown): PdDataset[] | undefined {
-  const rows = (parsed as { result?: unknown } | undefined)?.result
-  if (!Array.isArray(rows)) return undefined
-  return rows
-    .filter(r => typeof r?.id === 'number' && typeof r?.name === 'string')
-    .map(r => ({ id: r.id as number, name: r.name as string, icon: typeof r.icon === 'string' ? r.icon : '' }))
-    .sort((a, b) => a.id - b.id)
-}
-
-function toGlance(datasetId: number, raw: Record<string, unknown>): PdGlance {
-  const metric = (v: unknown): PdMetric => {
-    const m = v as { value?: unknown; delta_label?: unknown } | undefined
-    return { value: Number(m?.value ?? 0), deltaLabel: String(m?.delta_label ?? '') }
-  }
-  const platforms = Object.entries((raw.platforms ?? {}) as Record<string, unknown>)
-    .map(([platform, v]) => ({ platform: PLATFORM_NAMES[platform] ?? platform, posts: metric(v) }))
-    .sort((a, b) => b.posts.value - a.posts.value)
-  return {
-    datasetId,
-    days: Number(raw.comparison_days ?? GLANCE_DAYS),
-    posts: metric(raw.total_posts),
-    views: metric(raw.total_views),
-    followers: metric(raw.total_followers),
-    accounts: metric(raw.total_accounts),
-    activeAccounts: metric(raw.active_accounts),
-    creators: metric(raw.total_creators),
-    platforms,
-  }
-}
 
 // The MCP servers that carry every PD_SIGNATURE tool, from the tools connected now.
 async function findPdServers($: EngineInterface): Promise<string[]> {
@@ -130,18 +115,204 @@ async function callPd($: EngineInterface, tool: string, args?: Record<string, un
       "Can't find the PD Intelligence connector. If Claude Code just started it may still be connecting: press Refresh in a few seconds. Otherwise check /mcp that PD Intelligence is connected.",
     )
   }
-  const res = await $.mcp.call(server, tool, args)
+  let res: Awaited<ReturnType<EngineInterface['mcp']['call']>>
+  try {
+    res = await $.mcp.call(server, tool, args)
+  } catch (err) {
+    // A permission refusal reads as engine wording; say what to do instead.
+    if (/\b(refused|denied|classifier|permission)/i.test(err instanceof Error ? err.message : String(err))) throw new Error(blockedMessage(tool))
+    throw err
+  }
   const text = res.content.map(b => b.text ?? '').join('')
   if (res.isError) throw new Error(`PD Intelligence said: ${text.slice(0, 200)}`)
   return parseJson(text)
 }
 
-async function loadGlance($: EngineInterface, id: number) {
-  const raw = await callPd($, 'get_dashboard_stats', { dataset_id: id, comparison_days: GLANCE_DAYS })
-  await update($, glance, () => toGlance(id, (raw ?? {}) as Record<string, unknown>))
+const LOADING = { status: 'loading' } as const
+const snapshotKey = (id: number) => `snapshot-${id}`
+
+// The newest load; an older one's answers are dropped. Not drawn from, so a
+// module variable (a reload starts it over, which only drops in-flight answers).
+let latestLoad: object | null = null
+
+// Fetches the given sections of dataset `id` at once (all by default); each lands
+// as it settles, and only while this is the newest load and `id` the snapshot's dataset.
+async function loadSnapshot($: EngineInterface, id: number, today: string, keys: readonly SectionKey[] = SECTION_KEYS): Promise<void> {
+  if ((await read($, pinned))?.id !== id) return
+  const load = {}
+  latestLoad = load
+  const isMine = (s: PdSnapshot | null): s is PdSnapshot => !!s && s.datasetId === id && latestLoad === load
+  const days = lastDays(today)
+  const from = days[0]
+  const weekFrom = days[days.length - 7]
+  const lookback = dayKey(Date.parse(`${from}T00:00:00Z`) - SERIES_DAYS * DAY_MS)
+  const loading = Object.fromEntries(keys.map(k => [k, LOADING]))
+  await update($, snapshot, s =>
+    s && s.datasetId === id && keys.length < SECTION_KEYS.length
+      ? ({ ...s, ...loading } as PdSnapshot)
+      : ({ datasetId: id, fetchedOn: today, glance: LOADING, activity: LOADING, followers: LOADING, topPosts: LOADING, attention: LOADING } as PdSnapshot),
+  )
+
+  const sql = async (text: string, dateFrom: string) =>
+    rowsOf(await callPd($, 'run_analytics_sql', { dataset_id: id, sql: text, date_from: dateFrom }))
+  const jobs: Record<SectionKey, () => Promise<unknown>> = {
+    glance: async () =>
+      toGlance(id, ((await callPd($, 'get_dashboard_stats', { dataset_id: id, comparison_days: GLANCE_DAYS })) ?? {}) as Record<string, unknown>),
+    activity: async () => toActivity(await sql(activitySql(from), from), days),
+    followers: async () => toFollowers(await sql(followersSql(from, today), lookback), days),
+    topPosts: async () => toTopPosts(await sql(topPostsSql(weekFrom), weekFrom)),
+    attention: async () =>
+      toAttention(await callPd($, 'get_leaderboard', { dataset_id: id, entity_type: 'accounts', mode: 'needs_attention', limit: 3 })),
+  }
+
+  await Promise.all(
+    keys.map(async key => {
+      let section: PdSection<unknown>
+      try {
+        section = { status: 'ready', data: await jobs[key]() }
+      } catch (err) {
+        section = { status: 'failed', message: err instanceof Error ? err.message : String(err) }
+      }
+      await update($, snapshot, s => (isMine(s) ? ({ ...s, [key]: section } as PdSnapshot) : s))
+    }),
+  )
+
+  const done = await read($, snapshot)
+  if (isMine(done)) await $.store.set(snapshotKey(id), done)
 }
 
-async function refresh($: EngineInterface) {
+// Shows dataset `id`'s saved snapshot, unless the one held already is its own.
+async function showSaved($: EngineInterface, id: number): Promise<PdSnapshot | null> {
+  const held = await read($, snapshot)
+  if (held && held.datasetId === id) return held
+  const saved = ((await $.store.get(snapshotKey(id))) as PdSnapshot | undefined) ?? null
+  if ((await read($, pinned))?.id === id) await update($, snapshot, () => saved)
+  return saved
+}
+
+// Shows dataset `id`'s saved snapshot at once; fetches it all again when it is from
+// an earlier day or `force` is set, and only its unready sections otherwise.
+async function ensureSnapshot($: EngineInterface, id: number, force = false): Promise<void> {
+  const today = dayKey(await $.clock.now())
+  const snap = await showSaved($, id)
+  if (force || !snap || snap.fetchedOn < today) return loadSnapshot($, id, today)
+  if (isStale(snap, today)) await loadSnapshot($, id, today, SECTION_KEYS.filter(k => snap[k].status !== 'ready'))
+}
+
+// A loader's answer as a panel section: ready with its data, or failed with why.
+async function settle<T>(job: () => Promise<T>): Promise<PdSection<T>> {
+  try {
+    return { status: 'ready', data: await job() }
+  } catch (err) {
+    return { status: 'failed', message: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+const todayKey = (id: number) => `today-${id}`
+
+// Today's brief for dataset `id`: PD's daily summary, then that day's top posts by views.
+// Kept for the UTC day like the snapshot; answers for another dataset are dropped.
+async function ensureToday($: EngineInterface, id: number, force = false): Promise<void> {
+  const day = dayKey(await $.clock.now())
+  let held = await read($, today)
+  if (!held || held.datasetId !== id) {
+    held = ((await $.store.get(todayKey(id))) as PdToday | undefined) ?? null
+    await update($, today, () => held)
+  }
+  if (!force && held && held.fetchedOn === day && held.summary.status === 'ready' && held.posts.status === 'ready') return
+  await update($, today, () => ({ datasetId: id, fetchedOn: day, summary: LOADING, posts: LOADING }))
+  const mine = (s: PdToday | null): s is PdToday => !!s && s.datasetId === id
+  let date = day
+  const summary = await settle(async () => {
+    const s = toSummary(await callPd($, 'get_daily_summary', { dataset_id: id }))
+    date = s.date || day
+    return s
+  })
+  await update($, today, s => (mine(s) ? { ...s, summary } : s))
+  const posts = await settle(async () =>
+    toPosts(await callPd($, 'search_posts', { dataset_id: id, date_from: date, date_to: date, sort_by: 'views', sort_order: 'desc', page_size: 5 })),
+  )
+  await update($, today, s => (mine(s) ? { ...s, posts } : s))
+  const done = await read($, today)
+  if (mine(done)) await $.store.set(todayKey(id), done)
+}
+
+// Moves the panel to a screen and starts what it needs.
+async function show($: EngineInterface, s: PdScreen): Promise<void> {
+  await update($, screen, () => s)
+  const current = await read($, pinned)
+  if (s.kind === 'today' && current) await ensureToday($, current.id)
+  if (s.kind === 'post') await loadPost($, s.post)
+  if (s.kind === 'account') await loadAccount($, s.account)
+}
+
+// Refresh reloads what is on screen: Today, the open post or account, or the overview.
+async function refreshScreen($: EngineInterface): Promise<void> {
+  const s = await read($, screen)
+  const current = await read($, pinned)
+  if (s.kind === 'today' && current) return ensureToday($, current.id, true)
+  if (s.kind === 'post') return loadPost($, s.post)
+  if (s.kind === 'account') return loadAccount($, s.account)
+  return refresh($, true)
+}
+
+// Hands a request to Claude as the person's own message, and tracks it in the panel.
+async function ask($: EngineInterface, text: string, label: string): Promise<void> {
+  const at = new Date(await $.clock.now()).toISOString()
+  const id = `${at}-${(await read($, requests)).length}`
+  await update($, requests, list => startRequest(list, { id, label, text, status: 'sent', at }))
+  void $.prompt.submit({ text, asUser: true })
+}
+
+// One post's numbers; the comment summary waits for loadComments (it can take minutes).
+async function loadPost($: EngineInterface, post: PdTopPost): Promise<void> {
+  const current = await read($, pinned)
+  if (!current || post.id === undefined) return
+  const postId = post.id
+  const datasetId = current.id
+  await update($, postView, () => ({ datasetId, postId, detail: LOADING, comments: null }))
+  const detail = await settle(async () => toPostDetail(await callPd($, 'get_post_detail', { dataset_id: datasetId, post_id: postId })))
+  await update($, postView, v => (v && v.postId === postId && v.datasetId === datasetId ? { ...v, detail } : v))
+}
+
+async function loadComments($: EngineInterface): Promise<void> {
+  const current = await read($, pinned)
+  const held = await read($, postView)
+  if (!current || !held) return
+  const { postId, datasetId } = held
+  if (datasetId !== current.id) return
+  const mine = (v: PdPostView | null): v is PdPostView => !!v && v.postId === postId && v.datasetId === datasetId
+  await update($, postView, v => (mine(v) ? { ...v, comments: LOADING } : v))
+  const comments = await settle(async () =>
+    toCommentSummary(await callPd($, 'get_comment_summary', { dataset_id: datasetId, post_id: postId })),
+  )
+  await update($, postView, v => (mine(v) ? { ...v, comments } : v))
+}
+
+// One account's numbers and its latest posts on that platform.
+async function loadAccount($: EngineInterface, ref: PdAccountRef): Promise<void> {
+  const current = await read($, pinned)
+  if (!current) return
+  const key = `${ref.platform}:${ref.username}`
+  const datasetId = current.id
+  // Filtered to the account's platform: a common handle's look-alikes would otherwise fill the page.
+  const filter = { dataset_id: datasetId, search: ref.username, platform: platformKey(ref.platform), page_size: 100 }
+  await update($, accountView, () => ({ datasetId, key, stats: LOADING, recent: LOADING }))
+  const mine = (v: PdAccountView | null): v is PdAccountView => !!v && v.key === key && v.datasetId === datasetId
+  const stats = await settle(async () => toAccountStats(await callPd($, 'search_accounts', filter), ref))
+  await update($, accountView, v => (mine(v) ? { ...v, stats } : v))
+  const recent = await settle(async () =>
+    toPosts(await callPd($, 'search_posts', { ...filter, sort_by: 'post_timestamp', sort_order: 'desc' }))
+      .filter(p => p.platform === ref.platform && p.author.toLowerCase() === ref.username.toLowerCase())
+      .slice(0, 5),
+  )
+  await update($, accountView, v => (mine(v) ? { ...v, recent } : v))
+}
+
+// `withSnapshot` false only lists the datasets (pinById, about to pin another).
+async function refresh($: EngineInterface, force = false, withSnapshot = true) {
+  const pinnedNow = await read($, pinned)
+  if (pinnedNow && withSnapshot) await showSaved($, pinnedNow.id)
   await update($, notice, () => 'Loading your datasets…')
   try {
     const list = toDatasets(await callPd($, 'list_datasets'))
@@ -153,8 +324,8 @@ async function refresh($: EngineInterface) {
       await update($, pinned, () => fresh)
       showStatus($, fresh)
     }
-    if (current) await loadGlance($, current.id)
     await update($, notice, () => null)
+    if (current && withSnapshot) await ensureSnapshot($, current.id, force)
   } catch (err) {
     await update($, notice, () => err instanceof Error ? err.message : String(err))
   }
@@ -168,21 +339,25 @@ async function pin($: EngineInterface, d: PdDataset | null) {
   if (d) await $.store.set('dataset', d)
   else await $.store.delete('dataset')
   await update($, pinned, () => d)
-  await update($, glance, () => null)
-  showStatus($, d)
-  if (!d) return
-  try {
-    await loadGlance($, d.id)
-  } catch (err) {
-    await update($, notice, () => err instanceof Error ? err.message : String(err))
+  await update($, screen, () => ({ kind: 'home' }) as PdScreen)
+  if (d) {
+    const ids = pushRecent(await read($, recent), d.id)
+    await $.store.set('recentDatasets', ids)
+    await update($, recent, () => ids)
   }
+  showStatus($, d)
+  if (!d) {
+    await update($, snapshot, () => null)
+    return
+  }
+  await ensureSnapshot($, d.id)
 }
 
 // Pins a dataset by id, naming it from the list (loaded first if need be).
 async function pinById($: EngineInterface, id: number): Promise<PdDataset> {
   let list = await read($, datasets)
   if (!list) {
-    await refresh($)
+    await refresh($, false, false)
     list = await read($, datasets)
   }
   const found = list?.find(d => d.id === id) ?? { id, name: `Dataset ${id}`, icon: '' }
@@ -256,139 +431,36 @@ function formatLedger(entries: readonly PdEvidence[]): string {
   return [`PD Intelligence calls this session (${entries.length}):`, '', ...lines].join('\n')
 }
 
-// The panel as markdown: the /pd row the model reads, and what a surface that
-// draws no plugin panels (the mobile app) shows in its place.
-function summary(list: readonly PdDataset[] | null, current: PdDataset | null, g: PdGlance | null): string {
-  const lines = [current ? `**PD Intelligence** · working in **${label(current)}**` : '**PD Intelligence** · no dataset chosen yet']
-  if (g && current && g.datasetId === current.id) {
-    const m = (x: PdMetric, value: string) => `${value} (${x.deltaLabel})`
-    lines.push(
-      '',
-      `Last ${g.days} days:`,
-      `- Posts: ${m(g.posts, grouped(g.posts.value))}`,
-      `- Views: ${m(g.views, compact(g.views.value))}`,
-      `- Followers: ${m(g.followers, compact(g.followers.value))}`,
-      `- Accounts: ${m(g.accounts, grouped(g.accounts.value))}, ${m(g.activeAccounts, grouped(g.activeAccounts.value))} posting`,
-      `- Creators: ${m(g.creators, grouped(g.creators.value))}`,
-    )
-    if (g.platforms.length > 0) {
-      lines.push(`- By platform: ${g.platforms.map(p => `${p.platform} ${compact(p.posts.value)}`).join(' · ')}`)
-    }
-  }
-  if (list) {
-    lines.push(
-      '',
-      '**Your datasets**',
-      ...list.map(d => `- ${d.id === current?.id ? '**' : ''}${label(d)} · #${d.id}${d.id === current?.id ? '** (current)' : ''}`),
-      '',
-      'To switch, ask Claude ("work in ...") or type `/pd-dataset` and the number.',
-    )
-  }
-  if (current) {
-    lines.push('Next: ask Claude to explore this dataset, or type `/pd-intel-code:report` for a report.')
-  }
-  return lines.join('\n')
-}
-
 // The panel itself, drawn in the side panel or as /pd's row in the chat;
 // `extra` is what only one of the two adds.
 async function drawPanel($: EngineInterface, e: ResolveInput, extra?: JSX.Element) {
-  const { Box, Text, Button } = $.ui.resolve(e)
-  const list = await read($, datasets)
   const current = await read($, pinned)
-  const g = await read($, glance)
-  const isCapturing = await read($, capture)
-  const line = await read($, notice)
-  const calls = (await read($, ledger)).length
-  const shown = g && current && g.datasetId === current.id ? g : null
-
-  const row = (name: string, m: PdMetric, value: string) => (
-    <Box key={name} flexDirection="row">
-      <Box width={12}>
-        <Text dimColor>{name}</Text>
-      </Box>
-      <Box width={10}>
-        <Text bold>{value}</Text>
-      </Box>
-      <Text color={m.deltaLabel.startsWith('-') ? 'error' : 'success'}>{m.deltaLabel}</Text>
-    </Box>
-  )
-
-  return (
-    <Box flexDirection="column" gap={1}>
-      {line && <Text color="warning">{line}</Text>}
-
-      <Box flexDirection="column">
-        <Text dimColor>Working in</Text>
-        {current ? (
-          <Text bold>{label(current)}</Text>
-        ) : (
-          <Text>No dataset chosen yet. Pick one below and Claude will use it.</Text>
-        )}
-      </Box>
-
-      {shown && (
-        <Box flexDirection="column">
-          <Text dimColor>Change over the last {shown.days} days</Text>
-          {row('Posts', shown.posts, grouped(shown.posts.value))}
-          {row('Views', shown.views, compact(shown.views.value))}
-          {row('Followers', shown.followers, compact(shown.followers.value))}
-          {row('Accounts', shown.accounts, grouped(shown.accounts.value))}
-          {row('Posting', shown.activeAccounts, grouped(shown.activeAccounts.value))}
-          {row('Creators', shown.creators, grouped(shown.creators.value))}
-          {shown.platforms.length > 0 && (
-            <Text dimColor wrap="wrap">
-              {shown.platforms.map(p => `${p.platform} ${compact(p.posts.value)}`).join(' · ')}
-            </Text>
-          )}
-        </Box>
-      )}
-
-      {current && (
-        <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
-          <Button
-            key="explore"
-            label="Explore this dataset"
-            variant="primary"
-            onPress={() => $.command.run({ command: 'pd-intel-code:explore' })}
-          />
-          <Button
-            key="report"
-            label="Write a report"
-            onPress={() => $.command.run({ command: 'pd-intel-code:report' })}
-          />
-        </Box>
-      )}
-
-      <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
-        <Button
-          key="capture"
-          label={`Save results for charts: ${isCapturing ? 'On' : 'Off'}`}
-          onPress={() => setCapture($, !isCapturing)}
-        />
-        <Button
-          key="sources"
-          label={`Sources used (${calls})`}
-          onPress={() => $.command.run({ command: 'pd-evidence' })}
-        />
-        <Button key="refresh" label="Refresh" onPress={() => refresh($)} />
-      </Box>
-
-      <Box flexDirection="column">
-        <Text dimColor>Your datasets{list ? ` (${list.length})` : ''}: press one to work in it</Text>
-        {(list ?? []).map(d => (
-          <Button
-            key={`ds-${d.id}`}
-            plain
-            label={`${d.id === current?.id ? '●' : '○'} ${label(d)} #${d.id}`}
-            onPress={() => pin($, d)}
-          />
-        ))}
-      </Box>
-
-      {extra}
-    </Box>
-  )
+  const held = await read($, snapshot)
+  const data: PanelData = {
+    list: await read($, datasets),
+    current,
+    snap: held && current && held.datasetId === current.id ? held : null,
+    isCapturing: await read($, capture),
+    line: await read($, notice),
+    calls: (await read($, ledger)).length,
+    screen: await read($, screen),
+    today: await read($, today),
+    postView: await read($, postView),
+    accountView: await read($, accountView),
+    requests: await read($, requests),
+    recent: await read($, recent),
+  }
+  const actions: PanelActions = {
+    pin: d => pin($, d),
+    refresh: () => refreshScreen($),
+    setCapture: on => setCapture($, on),
+    ask: (text, label) => ask($, text, label),
+    run: command => $.command.run({ command }),
+    show: s => show($, s),
+    back: () => show($, { kind: 'home' }),
+    loadComments: () => loadComments($),
+  }
+  return renderPanel($.ui.resolve(e), e.surface, data, actions, extra)
 }
 
 export const register: Register = on => {
@@ -422,6 +494,8 @@ export const register: Register = on => {
 
     const saved = (await $.store.get('dataset')) as PdDataset | undefined
     await update($, pinned, () => saved ?? null)
+    const recentIds = ((await $.store.get('recentDatasets')) as number[] | undefined) ?? []
+    await update($, recent, () => recentIds)
     const isCapturing = (await $.store.get('capture')) === true
     await update($, capture, () => isCapturing)
     showStatus($, saved ?? null)
@@ -441,7 +515,7 @@ export const register: Register = on => {
     if ((await read($, view)) === 'side') await $.ui.open({ id: PANE, title: 'PD Intelligence' })
     await refresh($)
     const problem = await read($, notice)
-    return { text: problem ?? summary(await read($, datasets), await read($, pinned), await read($, glance)) }
+    return { text: problem ?? summary(await read($, datasets), await read($, pinned), await read($, snapshot)) }
   })
 
   on('command.run', { command: 'pd-dataset' }, async ($, e) => {
@@ -534,6 +608,20 @@ export const register: Register = on => {
       reason: `${shortName(e.tool)} deletes PD Intelligence data or changes who can see a document`,
     }
   }).catch(() => ({ decision: 'ask' }))
+
+  // Claude's turns, matched to the requests the panel sent: by text when one starts, then by turn id.
+  on('turn.start', async ($, e, next) => {
+    await update($, requests, list => requestStarted(list, e.text, e.turnId))
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('turn.complete', async ($, e, next) => {
+    if (e.agentId === undefined) {
+      const stopped = e.isAborted || e.reason === 'error' || e.reason === 'refusal'
+      await update($, requests, list => requestDone(list, e.turnId, e.answer, stopped))
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
   on('prompt.compose', async ($, e, next) => {
     const composed = await next(e)
