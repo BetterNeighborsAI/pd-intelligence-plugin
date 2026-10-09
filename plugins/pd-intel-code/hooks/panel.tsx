@@ -528,7 +528,7 @@ export function summary(list: readonly PdDataset[] | null, current: PdDataset | 
     }
     const weak = ready(snap?.attention)
     if (weak && weak.length > 0) {
-      lines.push('', 'Needs attention:', ...weak.map(a => `- @${a.username} (${a.platform}): ${grouped(a.posts)} posts, ${compact(a.views)} views`))
+      lines.push('', 'Needs attention:', ...weak.map(a => `- @${a.username} (${a.platform}): ${plural(a.posts, 'post')}, ${compact(a.views)} ${a.views === 1 ? 'view' : 'views'}`))
     }
   }
   if (list) {

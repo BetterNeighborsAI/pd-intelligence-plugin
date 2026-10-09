@@ -881,3 +881,11 @@ test('a click that only focuses the side panel still presses its button, once', 
   await click('today')
   expect(await side.find({ key: 'back' })).toBeUndefined()
 })
+
+test("/pd's text says 1 post and 1 view, not 1 posts", async ($, on) => {
+  const one = JSON.stringify({ result: [{ author_username: 'lonely', platform: 'youtube', total_posts: 1, total_views: 1, total_likes: 0, engagement_rate: 0 }] })
+  connector(on, {}, SERVER, (tool, args) => (tool === 'get_leaderboard' ? one : answer(tool, args)))
+  await $.command.run(typed('pd-dataset', '16'))
+  const { text } = await $.command.run(typed('pd'))
+  expect(text).toContain('- @lonely (YouTube): 1 post, 1 view')
+})
