@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "pd-intel-code",
   "displayName": "PD Intelligence for Claude Code",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Claude Code mod for exploring PD Intelligence data and building reports from it, made for non-technical users: /pd opens a panel with your datasets and the chosen one's numbers at a glance (press a dataset to work in it, one-press Explore and Write a report), the chosen dataset shows in the status line and Claude uses it without asking, an evidence ledger lists every PD Intelligence call for a report's sources (optionally saving raw results as JSON for charts), and destructive writes always ask",
   "author": {
     "name": "Public Democracy",

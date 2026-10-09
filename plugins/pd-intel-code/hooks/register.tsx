@@ -377,10 +377,12 @@ async function drawPanel($: EngineInterface, e: ResolveInput, extra?: JSX.Elemen
       <Box flexDirection="column">
         <Text dimColor>Your datasets{list ? ` (${list.length})` : ''}: press one to work in it</Text>
         {(list ?? []).map(d => (
-          <Button key={`ds-${d.id}`} plain onPress={() => pin($, d)}>
-            {d.id === current?.id ? '● ' : '○ '}
-            {label(d)} <Text dimColor>#{d.id}</Text>
-          </Button>
+          <Button
+            key={`ds-${d.id}`}
+            plain
+            label={`${d.id === current?.id ? '●' : '○'} ${label(d)} #${d.id}`}
+            onPress={() => pin($, d)}
+          />
         ))}
       </Box>
 
