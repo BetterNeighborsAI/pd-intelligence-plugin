@@ -3,14 +3,18 @@ import type { EngineInterface, Register, ResolveInput, ToolCallResult } from 'cl
 
 import type { PdDataset, PdEvidence, PdGlance, PdMetric } from '../types'
 
-// Any tool on an MCP server whose name mentions "intel": the claude.ai
-// connector (mcp__PD_Intelligence__*) or a server added by hand under its own name.
-// This mod's own tools (mcp__pd-intel-code__*) are not PD Intelligence calls.
-const PD_TOOL = /^mcp__(?!pd-intel-code__).*intel.*__[a-z_]+$/i
+// The PD Intelligence server is recognised by its tools, never by its name: the
+// connector is named differently per install (PD_Intelligence, claude_ai_PD_Intelligence,
+// whatever someone typed in `claude mcp add`). A server with both of these is PD.
+const PD_SIGNATURE = ['list_datasets', 'get_dashboard_stats'] as const
+// Any MCP tool but this mod's own; the hook checks the server is PD's.
+const MCP_TOOL = /^mcp__(?!pd-intel-code__)/
 const CHOOSE_TOOL = 'mcp__pd-intel-code__choose_dataset'
 // Writes that remove data or widen who can see it: always put to the person.
-const CONFIRM_TOOL = /^mcp__.*intel.*__(delete_tag|delete_creators|share_document)$/i
-const PD_SERVER = /^mcp__(.*intel.*)__list_datasets$/i
+const CONFIRM_TOOL = /^mcp__.+__(delete_tag|delete_creators|share_document)$/
+// A connector can still be connecting when Claude Code has just started: how long /pd waits.
+const CONNECT_TRIES = 4
+const CONNECT_WAIT_MS = 1500
 
 const ledger = atom({ plugin: 'pd-intel-code', key: 'ledger' } as const, [])
 const datasets = atom({ plugin: 'pd-intel-code', key: 'datasets' } as const, null)
@@ -19,6 +23,7 @@ const glance = atom({ plugin: 'pd-intel-code', key: 'glance' } as const, null)
 const capture = atom({ plugin: 'pd-intel-code', key: 'capture' } as const, false)
 const notice = atom({ plugin: 'pd-intel-code', key: 'notice' } as const, null)
 const view = atom({ plugin: 'pd-intel-code', key: 'view' } as const, 'chat')
+const pdServers = atom({ plugin: 'pd-intel-code', key: 'pdServers' } as const, {})
 
 const PANE = 'pd'
 
@@ -35,6 +40,7 @@ const PLATFORM_NAMES: Record<string, string> = {
 }
 
 const shortName = (tool: string) => tool.slice(tool.lastIndexOf('__') + 2)
+const serverName = (tool: string) => tool.slice('mcp__'.length, tool.lastIndexOf('__'))
 
 const grouped = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
@@ -87,20 +93,42 @@ function toGlance(datasetId: number, raw: Record<string, unknown>): PdGlance {
   }
 }
 
-// The connector's server name, read off its list_datasets tool.
-async function pdServer($: EngineInterface): Promise<string | undefined> {
+// The MCP servers that carry every PD_SIGNATURE tool, from the tools connected now.
+async function findPdServers($: EngineInterface): Promise<string[]> {
+  const tools = new Map<string, Set<string>>()
   for (const tool of await $.tool.list()) {
-    const match = tool.mcp ? PD_SERVER.exec(tool.name) : null
-    if (match?.[1]) return match[1]
+    if (!tool.mcp || !MCP_TOOL.test(tool.name)) continue
+    const server = serverName(tool.name)
+    tools.set(server, (tools.get(server) ?? new Set()).add(shortName(tool.name)))
   }
-  return undefined
+  return [...tools].filter(([, names]) => PD_SIGNATURE.every(n => names.has(n))).map(([server]) => server)
+}
+
+// Whether a tool call went to PD Intelligence; the answer is kept per server.
+async function isPdServer($: EngineInterface, server: string): Promise<boolean> {
+  const known = await read($, pdServers)
+  if (server in known) return known[server] === true
+  const isPd = (await findPdServers($)).includes(server)
+  await update($, pdServers, m => ({ ...m, [server]: isPd }))
+  return isPd
+}
+
+// The PD Intelligence server, waiting a little for a connector that is still connecting.
+async function pdServer($: EngineInterface): Promise<string | undefined> {
+  for (let tries = 1; ; tries++) {
+    const [server] = await findPdServers($)
+    if (server || tries >= CONNECT_TRIES) return server
+    await $.clock.sleep(CONNECT_WAIT_MS)
+  }
 }
 
 // Calls a PD Intelligence tool for the panel itself (not the model's evidence).
 async function callPd($: EngineInterface, tool: string, args?: Record<string, unknown>): Promise<unknown> {
   const server = await pdServer($)
   if (!server) {
-    throw new Error('PD Intelligence is not connected. Turn on the PD Intelligence connector, then press Refresh.')
+    throw new Error(
+      "Can't find the PD Intelligence connector. If Claude Code just started it may still be connecting: press Refresh in a few seconds. Otherwise check /mcp that PD Intelligence is connected.",
+    )
   }
   const res = await $.mcp.call(server, tool, args)
   const text = res.content.map(b => b.text ?? '').join('')
@@ -486,9 +514,9 @@ export const register: Register = on => {
     return { result: `Now working in ${label(found)} (dataset ${found.id}).` }
   })
 
-  on('tool.call', { tool: PD_TOOL }, async ($, e, next) => {
+  on('tool.call', { tool: MCP_TOOL }, async ($, e, next) => {
     const ran = await next(e)
-    if (ran.deny === undefined) {
+    if (ran.deny === undefined && (await isPdServer($, serverName(e.tool)))) {
       await record($, e as Record<string, unknown>, ran)
     }
     return ran
@@ -496,7 +524,7 @@ export const register: Register = on => {
 
   on('tool.check', { tool: CONFIRM_TOOL }, async ($, e, next) => {
     const verdict = await next(e)
-    if (verdict.decision !== 'allow') {
+    if (verdict.decision !== 'allow' || !(await isPdServer($, serverName(e.tool)))) {
       return verdict
     }
     return {

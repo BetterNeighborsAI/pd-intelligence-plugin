@@ -49,6 +49,8 @@ declare module 'claude-code' {
       notice: string | null
       /** Where /pd shows the panel: in the chat, or the side panel (mirrors $.store `view`). */
       view: 'chat' | 'side'
+      /** For each MCP server a tool call went to: whether it is PD Intelligence. */
+      pdServers: Record<string, boolean>
     }
   }
 }

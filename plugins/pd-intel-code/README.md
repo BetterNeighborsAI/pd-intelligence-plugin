@@ -4,8 +4,8 @@ A Claude Code **mod** (a function-hooks plugin) for exploring PD Intelligence da
 into reports, made for people who would rather press a button than type an id. Pairs with the
 `pd-intelligence` skills plugin; works without it.
 
-It uses the **PD Intelligence connector** you already have set up in claude.ai (any MCP server
-whose name contains "intel" works). It ships no server of its own.
+It uses the **PD Intelligence connector** you already have set up in claude.ai, recognised by its
+tools whatever the connector is named. It ships no server of its own.
 
 ## Start here: `/pd`
 

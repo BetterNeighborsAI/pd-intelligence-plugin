@@ -2,7 +2,6 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 const SERVER = 'PD_Intelligence'
-const LIST = `mcp__${SERVER}__list_datasets`
 const SEARCH = `mcp__${SERVER}__search_posts`
 const DELETE = `mcp__${SERVER}__delete_tag`
 const DATASETS = JSON.stringify({
@@ -29,11 +28,16 @@ const PANEL = { component: 'CommandOutput', props: { command: 'pd', args: '', te
 const typed = (command: string, args = '') =>
   ({ command, args, origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 120 } }) as const
 
+// The tools a connected server lists, as $.tool.list answers them.
+const toolsOf = (server: string, names: readonly string[]) =>
+  names.map(name => ({ name: `mcp__${server}__${name}`, description: '', mcp: true }))
+const PD_TOOLS = ['list_datasets', 'get_dashboard_stats', 'search_posts', 'delete_tag'] as const
+
 // The connector, as the engine's tool list and MCP client would answer.
-function connector(on: On, saved: Record<string, unknown> = {}) {
+function connector(on: On, saved: Record<string, unknown> = {}, server = SERVER) {
   mock.store(on, saved)
   mock.clock(on, { now: Date.UTC(2026, 9, 9, 15) })
-  on('tool.list', () => ({ value: [{ name: LIST, description: '', mcp: true }] }))
+  on('tool.list', () => ({ value: [...toolsOf(server, PD_TOOLS), ...toolsOf('github', ['get_me', 'list_datasets'])] }))
   on('mcp.call', ($, e) => ({
     value: { content: [{ type: 'text', text: e.tool === 'list_datasets' ? DATASETS : STATS }], isError: false },
   }))
@@ -103,13 +107,35 @@ test('people choose side panel or chat; mobile always draws in the chat', async 
   expect(await chat.find({ key: 'ds-3' })).toBeDefined()
 })
 
+test('the connector is found by its tools, whatever it is named', async ($, on) => {
+  connector(on, {}, 'pdhq')
+  on('tool.call', { tool: 'mcp__pdhq__search_posts' }, () => ({ result: '{"result":[]}', text: '{"result":[]}' }))
+  on('tool.check', () => ({ decision: 'allow' }))
+
+  expect((await $.command.run(typed('pd'))).text).toContain('- 📈 Example Campaign · #16')
+  await $.tool.call({ tool: 'mcp__pdhq__search_posts', dataset_id: 16 })
+  expect((await $.command.run(typed('pd-evidence'))).text).toContain('`search_posts` {"dataset_id":16}')
+  expect((await $.tool.check({ tool: 'mcp__pdhq__delete_tag', input: { tag_id: 1 } })).decision).toBe('ask')
+})
+
+test('/pd waits for a connector that is still connecting', async ($, on) => {
+  mock.store(on)
+  let lists = 0
+  on('tool.list', () => ({ value: ++lists < 3 ? [] : toolsOf(SERVER, PD_TOOLS) }))
+  on('clock.sleep', () => ({ value: undefined }))
+  on('mcp.call', () => ({ value: { content: [{ type: 'text', text: DATASETS }], isError: false } }))
+
+  expect((await $.command.run(typed('pd'))).text).toContain('- 🌱 Another Dataset · #3')
+})
+
 test('the panel says plainly when the connector is missing', async ($, on) => {
   mock.store(on)
   on('tool.list', () => ({ value: [] }))
+  on('clock.sleep', () => ({ value: undefined }))
   await $.command.run(typed('pd'))
 
   const ui = await $.ui.mount({ plugin: 'pd-intel-code', surface: 'terminal', ...PANEL })
-  expect(await ui.find({ text: /PD Intelligence is not connected/ })).toBeDefined()
+  expect(await ui.find({ text: /Can't find the PD Intelligence connector/ })).toBeDefined()
 })
 
 test('/pd also answers in text, which the model reads', async ($, on) => {
@@ -178,8 +204,11 @@ test('with capture on, raw results are written as git-ignored JSON', async ($, o
 })
 
 test('destructive writes are put to the person even when a rule allows them', async ($, on) => {
+  connector(on)
   on('tool.check', () => ({ decision: 'allow' }))
 
   expect((await $.tool.check({ tool: DELETE, input: { dataset_id: 16, tag_id: 1 } })).decision).toBe('ask')
   expect((await $.tool.check({ tool: SEARCH, input: { dataset_id: 16 } })).decision).toBe('allow')
+  // Another server's tool of the same name is not PD's to guard.
+  expect((await $.tool.check({ tool: 'mcp__github__delete_tag', input: {} })).decision).toBe('allow')
 })
