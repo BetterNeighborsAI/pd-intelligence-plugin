@@ -69,3 +69,16 @@ test('a line chart has a line, one hover title per point, and never NaN', async 
     expect(lineSvg(few)).not.toContain('NaN')
   }
 })
+
+test('every chart follows the light or dark theme and fills the frame it is given', async () => {
+  const pts = [{ label: 'a', value: 1 }, { label: 'b', value: 2 }]
+  for (const svg of [barSvg(pts), lineSvg(pts), mixSvg([{ platform: 'X', posts: 1 }])]) {
+    // A frame whose color scheme differs from the page's paints an opaque (white) background.
+    expect(svg).toContain('color-scheme:light dark')
+    expect(svg).toContain('background:transparent')
+    expect(svg).toContain('width="100%" height="100%" preserveAspectRatio="none"')
+  }
+  // Stretched to the frame, the line and its last point keep their size.
+  expect(lineSvg(pts).match(/vector-effect="non-scaling-stroke"/g)?.length).toBe(2)
+  expect(lineSvg(pts)).not.toContain('<circle')
+})

@@ -889,3 +889,12 @@ test("/pd's text says 1 post and 1 view, not 1 posts", async ($, on) => {
   const { text } = await $.command.run(typed('pd'))
   expect(text).toContain('- @lonely (YouTube): 1 post, 1 view')
 })
+
+test('every chart frame is given its height, so no frame stands taller than its chart', async ($, on) => {
+  connector(on)
+  await $.command.run(typed('pd-dataset', '16'))
+  const ui = await $.ui.mount({ plugin: 'pd-intel-code', surface: 'desktop', ...PANEL })
+  const svgs = await ui.findAll({ type: 'Svg' })
+  expect(svgs.length).toBe(4)
+  for (const svg of svgs) expect(typeof svg.props.height).toBe('number')
+})

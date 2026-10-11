@@ -71,6 +71,10 @@ const REQUEST_STATUS: Record<PdRequest['status'], string> = {
   stopped: 'Stopped',
 }
 
+// Chart frames' heights in CSS pixels: a frame left to size itself stands far taller than its chart.
+const CHART_PX = 56
+const MIX_PX = 10
+
 const ready = <T,>(s: PdSection<T> | undefined): T | undefined => (s?.status === 'ready' ? s.data : undefined)
 const signed = (n: number) => `${n > 0 ? '+' : ''}${grouped(n)}`
 
@@ -94,7 +98,7 @@ export function drawPanel(els: Els, surface: RenderSurface, data: PanelData, act
   // Bars for daily counts, a line for a running figure; each metric in its own color.
   const chart = (key: string, points: ChartPoint[], alt: string, series: Series, form: 'bars' | 'line' = 'bars') =>
     Svg ? (
-      <Svg key={key} source={form === 'line' ? lineSvg(points, series) : barSvg(points, series)} alt={alt} isInteractive />
+      <Svg key={key} source={form === 'line' ? lineSvg(points, series) : barSvg(points, series)} alt={alt} height={CHART_PX} isInteractive />
     ) : (
       <Text key={key}>{sparkline(points.map(p => p.value))}</Text>
     )
@@ -247,6 +251,7 @@ export function drawPanel(els: Els, surface: RenderSurface, data: PanelData, act
               <Svg
                 source={mixSvg(g.platforms.map(x => ({ platform: x.platform, posts: x.posts.value })))}
                 alt={`Posts by platform: ${g.platforms.map(x => `${x.platform} ${share(x.posts.value)}`).join(', ')}`}
+                height={MIX_PX}
                 isInteractive
               />
             ) : (

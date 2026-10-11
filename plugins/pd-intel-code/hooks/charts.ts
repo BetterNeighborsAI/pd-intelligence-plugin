@@ -26,8 +26,14 @@ export const SERIES = {
 } as const
 export type Series = keyof typeof SERIES
 
+// Every chart's root: it fills the frame the panel sizes, and follows the reader's theme, since a
+// frame whose color scheme differs from the page's paints an opaque (white) background.
+const THEMED = ':root{color-scheme:light dark}html,body,svg{background:transparent;margin:0;height:100%;overflow:hidden}svg{display:block}'
+const svgOpen = (width: number, height: number) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%" preserveAspectRatio="none">`
+
 const seriesStyle = (series: Series) =>
-  `<style>.s{fill:${SERIES[series][0]};stroke:${SERIES[series][0]}}.axis{stroke:#c9c8c3}` +
+  `<style>${THEMED}.s{fill:${SERIES[series][0]};stroke:${SERIES[series][0]}}.axis{stroke:#c9c8c3}` +
   `@media (prefers-color-scheme:dark){.s{fill:${SERIES[series][1]};stroke:${SERIES[series][1]}}.axis{stroke:#4a4a46}}</style>`
 
 // One bar per point, a hover title on each whole column, a zero line for
@@ -51,7 +57,7 @@ export function barSvg(points: readonly ChartPoint[], series: Series = 'blue', w
     )
   })
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
+    svgOpen(width, height) +
     seriesStyle(series) +
     `<line class="axis" x1="0" x2="${width}" y1="${zero.toFixed(1)}" y2="${zero.toFixed(1)}" stroke-width="1"/>` +
     cols.join('') +
@@ -71,17 +77,20 @@ export function lineSvg(points: readonly ChartPoint[], series: Series = 'aqua', 
   const x = (i: number) => i * slot + slot / 2
   const zero = y(0)
   const xy = points.map((p, i) => `${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`)
-  const line = xy.length > 1 ? `<path d="M ${xy.join(' L ')}" fill="none" class="s" stroke-width="2" style="fill:none"/>` : ''
+  const line =
+    xy.length > 1 ? `<path d="M ${xy.join(' L ')}" fill="none" class="s" stroke-width="2" vector-effect="non-scaling-stroke" style="fill:none"/>` : ''
   const area =
     xy.length > 1
       ? `<path d="M ${x(0).toFixed(1)} ${zero.toFixed(1)} L ${xy.join(' L ')} L ${x(points.length - 1).toFixed(1)} ${zero.toFixed(1)} Z" class="s" stroke-width="0" fill-opacity="0.18"/>`
       : ''
-  const last = points.length > 0 ? `<circle class="s" stroke-width="0" cx="${x(points.length - 1).toFixed(1)}" cy="${y(points[points.length - 1].value).toFixed(1)}" r="3"/>` : ''
+  // The last point as a round dot that stays round however the frame stretches the chart.
+  const end = points.length > 0 ? `${x(points.length - 1).toFixed(1)} ${y(points[points.length - 1].value).toFixed(1)}` : ''
+  const last = end ? `<path class="s" d="M ${end} L ${end}" stroke-width="6" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` : ''
   const cols = points.map(
     (p, i) => `<g><title>${esc(p.label)}</title><rect x="${(i * slot).toFixed(1)}" y="0" width="${slot.toFixed(1)}" height="${height}" fill="transparent"/></g>`,
   )
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
+    svgOpen(width, height) +
     seriesStyle(series) +
     `<line class="axis" x1="0" x2="${width}" y1="${zero.toFixed(1)}" y2="${zero.toFixed(1)}" stroke-width="1"/>` +
     area +
@@ -142,8 +151,8 @@ export function mixSvg(parts: readonly MixPart[], width = 280, height = 6): stri
     x += w
   })
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
-    `<style>${light.join('')}@media (prefers-color-scheme:dark){${dark.join('')}}</style>` +
+    svgOpen(width, height) +
+    `<style>${THEMED}${light.join('')}@media (prefers-color-scheme:dark){${dark.join('')}}</style>` +
     segs.join('') +
     '</svg>'
   )
