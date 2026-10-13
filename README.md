@@ -1,10 +1,14 @@
-# PD Intelligence plugin for Claude
+# PD Intelligence plugins for Claude
 
-Skills that teach Claude to work with [PD Intelligence](https://intel.publicdemocracy.io)
-social data: briefings, post and comment deep-dives, creator analysis, news coverage,
-bulk pulls, tagging, and reports rendered as documents, interactive data stories, or decks.
+Two plugins for working with [PD Intelligence](https://intel.publicdemocracy.io) social data:
 
-The skills drive the PD Intelligence MCP connector, so you need a PD Intelligence
+- **`pd-intelligence`** (skills, any Claude app): briefings, post and comment deep-dives,
+  creator analysis, news coverage, bulk pulls, tagging, and reports rendered as documents,
+  interactive data stories, or decks.
+- **`pd-intel-code`** (**Claude Code only**): a `/pd` control panel for your datasets.
+  See [below](#pd-intel-code-the-pd-panel-claude-code-only).
+
+Both drive the PD Intelligence MCP connector, so you need a PD Intelligence
 account with the connector added to Claude. Set it up from the **Connections** page in
 PD Intelligence.
 
@@ -21,6 +25,37 @@ PD Intelligence.
 
 Customize → Plugins → **+** → Add from a repository → paste
 `https://github.com/BetterNeighborsAI/pd-intelligence-plugin`
+
+This installs the skills. `pd-intel-code` needs Claude Code and does nothing here.
+
+## `pd-intel-code`: the `/pd` panel (Claude Code only)
+
+> **Claude Code only.** This is a Claude Code mod. It runs in Claude Code's terminal, the
+> **Code** tab of the Claude desktop app, and Claude Code in your editor. It does **not**
+> run in claude.ai chat, the desktop app's Chat tab, or ChatGPT; use the
+> `pd-intelligence` skills there.
+
+Type `/pd` for a live panel of your PD Intelligence dataset:
+
+- **Today's numbers** with 14-day charts.
+- **Posts by platform**, top posts this week, and accounts that need attention.
+- **In-panel drill-downs** on posts and accounts.
+- **One-click requests** to Claude, with the answers shown back in the panel.
+
+It can sit in the chat or dock in the side panel.
+
+```
+/plugin marketplace add BetterNeighborsAI/pd-intelligence-plugin
+/plugin install pd-intel-code@better-neighbors
+```
+
+Like the skills, it uses your PD Intelligence connector, so add that first from the
+**Connections** page. It works with or without the `pd-intelligence` skills; install both
+for the best answers.
+
+**Auto mode:** Claude Code may block the lookups the panel makes on its own. If `/pd` says
+so, allow the read-only PD Intelligence tools in your permission settings.
+[The plugin's README](plugins/pd-intel-code/README.md) has the exact rule.
 
 ## Updates
 
