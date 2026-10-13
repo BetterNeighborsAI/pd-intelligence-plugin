@@ -19,10 +19,11 @@ Two habits from the rest of PD Intelligence are **wrong here**:
   platform, tag, account, or creator filter, because news has no relationship
   to those entities. (The one exception is a news-vs-social comparison, where
   the *social* half needs a dataset — see the workflows.)
-- **Do not confuse it with `get_daily_summary`.** That tool narrates a
-  *dataset's* social activity for a day. The news tools cover *news outlets*.
-  "What happened today" is ambiguous — if the user means tracked posts, use
-  `get_daily_summary`; if they mean the press, use these. Ask if unclear.
+- **Do not confuse it with the dataset's daily brief** (the `daily_summaries`
+  table in `run_analytics_sql`). That brief narrates a *dataset's* social
+  activity for a day. The news tools cover *news outlets*. "What happened
+  today" is ambiguous — if the user means tracked posts, use the daily brief;
+  if they mean the press, use these. Ask if unclear.
 
 ## Access
 
@@ -197,15 +198,14 @@ words: [{text, weight}]}`.
 6. **News vs social** — the news tools and the social data do not join, so
    line them up **by date**:
    1. `get_news_trend` with `terms` over the window — note the `dates`.
-   2. `list_datasets`, then for the same terms and dates `search_posts` (one
-      keyword per call — `search` is a substring match, not a boolean query)
-      or `run_analytics_sql`, grouped by day, with the window passed as the
-      `date_from`/`date_to` arguments.
+   2. `list_datasets`, then for the same terms and dates `run_analytics_sql`
+      on `posts` (`post_text ILIKE '%term%'`), grouped by day, with the window
+      passed as the `date_from`/`date_to` arguments.
    3. Compare timing: did headlines lead posts, or the reverse?
 
    Say that the connection is your inference from timing, not a relationship
-   in the data. Headline matching is whole-word; post `search` is substring,
-   so the two counts are not measured identically.
+   in the data. Headline matching is whole-word; `ILIKE` is substring, so the
+   two counts are not measured identically.
 
 ## Dates, and `available: false`
 

@@ -24,8 +24,9 @@ the cache belongs to the caller or to `pd-intel-deep-dive` /
 - "Pull all posts for X", "export everything", "get every comment on Y".
 - Resuming or verifying a cache an earlier run left behind.
 
-For a handful of posts, or a question answerable from `get_dashboard_stats`
-or a single `search_posts` page, skip this. Paging directly is fine and
+For a handful of posts, or a question answerable from `get_totals` or a
+single `run_analytics_sql` query (an aggregate, or one result of at most 500
+rows), skip this. Paging directly is fine and
 cheaper. This skill is for when the size is the problem.
 
 ## Prerequisites
@@ -34,20 +35,61 @@ cheaper. This skill is for when the size is the problem.
   If it's ambiguous which dataset is meant, ask — don't guess.
 - A writable directory. Default to `./pd-cache/<dataset>-<entity>-<scope>/`
   unless the user names one.
-- **This skill only reads.** The search tools it uses are read-only, so a
-  pull never changes source data — say so, and never let a bulk pull drift
-  into the server's write tools (tags, creators, documents).
+- **This skill only reads.** The tools it uses (`run_analytics_sql`,
+  `search_comments`, `list_commenters`) are read-only, so a pull never changes
+  source data — say so, and never let a bulk pull drift into the server's
+  write tools (tags, creators, accounts, posts, documents).
 
 ## Pagination rules — these are not optional
 
-The MCP search tools are offset-paginated (`page`, `page_size` max 100) and
+**Posts come from `run_analytics_sql`; comments and commenters from the paged
+search tools.** There is no post search tool.
+
+### Posts — keyset pages in SQL
+
+`run_analytics_sql` returns at most 500 rows and 150,000 characters per query.
+Page by `id`, not by `OFFSET`:
+
+```sql
+SELECT p.id, p.post_id, p.platform, p.content_type, p.author_username,
+       p.account_id, p.post_timestamp, p.post_url, p.post_text,
+       m.views, m.likes, m.comments, m.shares, m.saves
+FROM posts p
+LEFT JOIN post_metrics_latest m ON m.post_id = p.id
+WHERE p.id > LAST_ID
+ORDER BY p.id
+LIMIT 500
+```
+
+- Start with `LAST_ID` = 0; each next page starts after the **last id actually
+  returned**. Long `post_text` hits the character cap before 500 rows, so a
+  page can come back short — `notes` says so — and keyset paging just carries
+  on from where it stopped. Stop when a page returns no rows.
+- The partition's window, platforms and tags go in the `date_from` /
+  `date_to` / `platform` / `tag_names` **arguments**, never in the `WHERE`.
+  A keyword filter (`p.post_text ILIKE '%term%'`) can join the `WHERE`.
+- Name every column; text columns (`post_text`, `title`, `hashtags`,
+  `mentions`, `media_urls`) load only when named, so leave out the ones you
+  don't need.
+- Read `notes` on every page. If the partition's `posts` load was truncated
+  (500,000 rows), the partition is too big — split it finer; never cache a
+  truncated load as complete.
+- The loaded copy is reused for about 3 minutes per user and filter set, so
+  the pages of one partition read the same snapshot while it lasts.
+- **Run SQL partitions one after another, even across subagents.** Each user
+  has one query in flight and only a few sandboxes are kept per server, so
+  parallel partitions evict each other's loads and fail with "sandbox is
+  busy".
+
+### Comments and commenters — offset pages
+
+The search tools are offset-paginated (`page`, `page_size` max 100) and
 return `{items, total, page, page_size, total_pages}`.
 
-`search_posts` and `search_comments` order deterministically: both apply an
-`id` tie-break, so rows that tie on the sort column (thousands of posts at
-`likes = 0`) come back in a stable order. For those two, **sort by whatever
-you need** — `post_timestamp`, `likes`, `views`, `engagement_rate` — pages
-will not reshuffle between calls.
+`search_comments` orders deterministically: it applies an `id` tie-break, so
+rows that tie on the sort column (thousands of comments at `likes = 0`) come
+back in a stable order. **Sort by whatever you need** — `comment_timestamp`,
+`likes`, `replies_count` — pages will not reshuffle between calls.
 
 **`list_commenters` is the exception: it has no tie-break.** Sorting it by
 `total_comments`, where huge numbers of commenters tie at one comment each,
@@ -74,26 +116,30 @@ rows. There is no cursor. The rules below close that gap:
    single 400-page pull does not.
 
 Sorting by a metric is safe for ordering, but for a *complete* pull prefer
-`post_timestamp` anyway: it's the axis your partitions are cut on, so it
+`comment_timestamp` anyway: it's the axis your partitions are cut on, so it
 keeps each partition a contiguous, independently reproducible range. Want top
-posts by likes? Pull the range, then sort the cache locally — you have every
+comments by likes? Pull the range, then sort the cache locally — you have every
 row.
 
 ## Workflow
 
 ### 1. Preflight — size the job before starting it
 
-Call `search_posts` (or `search_comments`) with the **real filters** and
-`page_size: 1`. Ignore the item; read `total`. One cheap call tells you how
-big the job is, which partition strategy to use, and gives you the number to
-reconcile against at the end.
+For posts, run `SELECT count(*) FROM posts p` (plus any keyword condition)
+with the **real arguments**; for comments, call `search_comments` with the real
+filters and `page_size: 1`, ignore the item and read `total`. One cheap call
+tells you how big the job is, which partition strategy to use, and gives you
+the number to reconcile against at the end. On the SQL count, check `notes`
+too: a truncated load means the count is short and the job needs narrower
+partitions from the start.
 
 Report the size to the user before a long pull: "41,230 posts across 14
 months — I'll pull in monthly partitions." A user who expected 500 rows
 should get a chance to narrow the filters first.
 
-Note `total` comes from a separate count query than the page query, so it is
-a **reconciliation signal, not gospel**. A small drift on a live dataset is
+Note `total` comes from a separate count query than the page query (and a
+SQL count from a snapshot up to a few minutes old), so it is a
+**reconciliation signal, not gospel**. A small drift on a live dataset is
 expected; a large gap is a real problem.
 
 ### 2. Choose a partition key
@@ -120,9 +166,9 @@ backfills land unevenly. Sizing by the
 average gives you partitions that are 4× too big exactly where the data is
 densest.
 
-Instead, **preflight each partition** the same way you sized the job:
-`page_size: 1`, read `total`, record it as `expected` in the manifest before
-pulling. It's one cheap call per partition and it's what lets you split the
+Instead, **preflight each partition** the same way you sized the job (a SQL
+`count(*)` with the partition's window, or `page_size: 1` and `total`), and
+record it as `expected` in the manifest before pulling. It's one cheap call per partition and it's what lets you split the
 dense ones finer before they hurt. Write the real numbers down; don't guess.
 
 ### 3. Write the manifest before pulling anything
@@ -137,15 +183,15 @@ agent's memory, so a crash or context reset costs one partition — not the run.
 {
   "dataset_id": 7,
   "entity": "posts",
-  "filters": { "platform": "instagram", "search": null, "tag_names": null },
-  "sort": { "sort_by": "post_timestamp", "sort_order": "asc" },
+  "filters": { "platform": "instagram", "keyword": null, "tag_names": null },
+  "order": "id asc (keyset)",
   "expected_total": 41230,
   "started_at": "2026-07-15T10:00:00Z",
   "partitions": [
     {
       "key": "2026-01",
       "date_from": "2026-01-01",
-      "date_to": "2026-01-31",
+      "date_to": "2026-02-01",
       "file": "posts_2026-01.ndjson",
       "status": "pending",
       "expected": null,
@@ -156,27 +202,32 @@ agent's memory, so a crash or context reset costs one partition — not the run.
 }
 ```
 
-Every partition starts `pending`. `filters` and `sort` are recorded so the
-pull is reproducible and so a later run can tell whether a cache matches the
-question being asked.
+Every partition starts `pending`. `filters` and the ordering are recorded so
+the pull is reproducible and so a later run can tell whether a cache matches
+the question being asked. `run_analytics_sql` loads rows *before* `date_to`,
+so give each partition the next one's `date_from` as its `date_to`; the
+dedupe by id absorbs any overlap at the boundary.
 
 ### 4. Pull each partition
 
 For each `pending` partition:
 
-1. `page_size: 100`, `sort_order: "asc"`, closed `date_from`/`date_to`,
-   `page: 1`. Record the partition's `total` as `expected`.
-2. Loop `page` from 1 to `total_pages`, **one call at a time**. Append each
-   item as one JSON object per line to the partition's `.ndjson`, skipping
-   ids already written.
+1. Posts: the keyset query above with the partition's window as arguments,
+   `LAST_ID` = 0. Comments: `page_size: 100`, `sort_order: "asc"`, closed
+   `date_from`/`date_to`, `page: 1`. Record the partition's count as
+   `expected`.
+2. Loop — next `LAST_ID` for posts, `page` from 1 to `total_pages` for
+   comments — **one call at a time**. Append each row as one JSON object per
+   line to the partition's `.ndjson`, skipping ids already written.
 3. Mark the partition `done` with `unique_written` — but only if no page
    failed. Otherwise mark it `partial`.
 4. Keep one line of counts: `2026-01: 3,120 rows`. Never carry rows forward.
 
-**Pull serially.** Firing many search calls concurrently makes the server
-time out — a burst of parallel page requests fails where the same requests
-one after another succeed. Parallelism belongs *between* partitions (via
-subagents, below), never between pages of one partition.
+**Pull serially.** Firing many calls concurrently makes the server time out
+— a burst of parallel page requests fails where the same requests one after
+another succeed. For comments, parallelism belongs *between* partitions (via
+subagents, below), never between pages of one partition. For posts in SQL,
+keep partitions serial too (see above).
 
 ### Individual pages fail — handle it or you will ship a silent lie
 
@@ -263,7 +314,7 @@ around, and you cannot instruct your way out of it.
 Two mechanisms actually work. Use one:
 
 1. **Delegate each partition to a subagent** (the general path). The subagent
-   calls the search tool, writes its `.ndjson`, and returns **only counts**:
+   calls the tool, writes its `.ndjson`, and returns **only counts**:
    expected, unique written, failed pages, min/max timestamp. Its context
    absorbs the rows and is discarded when it exits. The orchestrator sees a
    line of numbers per partition and never touches a row. For a large pull
@@ -285,27 +336,30 @@ Do not start a 600-page pull you cannot finish.
 
 The rest of the discipline:
 
-- Cache the **fields you need**. `search_posts` returns a usable row already
-  (id, platform, author, timestamp, text, metrics, tags) — don't call
-  `get_post_detail` per post across thousands of posts. Enrich a chosen few
-  afterward.
+- Cache the **fields you need**. The keyset query returns a usable row already
+  (ids, platform, author, timestamp, text, metrics) — don't run a per-post
+  lookup across thousands of posts. Enrich a chosen few afterward (tags come
+  from `entity_tags`, joined in the same query if you need them).
 - Announce the plan, then report per-partition progress as one line each.
 - Subagents run per partition, but **each subagent pages serially** — see the
-  serial rule above. Concurrency across partitions is fine; concurrency
-  across pages is what triggers timeouts.
+  serial rule above. For comments, concurrency across partitions is fine;
+  concurrency across pages is what triggers timeouts. For SQL post pulls, run
+  the subagents one after another.
 
 ## Pitfalls
 
 - **`search` is a substring match, not a boolean query.** The data explorer
-  in the web app supports `AND` / `OR` / `NOT` / quoted phrases — the MCP
-  `search` parameter does **not**. Passing `search: "launch AND recap"`
-  matches the literal string `launch AND recap` and returns almost nothing,
-  with no error. This is a silent wrong answer, and on a bulk pull it means
-  caching an empty or near-empty set and reporting it as complete. One
-  keyword per pull; combine locally, or partition across several
-  single-keyword pulls and union the cache.
-- **An out-of-range `page` returns empty items, not an error.** Trust
-  `total_pages` from page 1 and stop there; don't probe for the end by
+  in the web app supports `AND` / `OR` / `NOT` / quoted phrases — the
+  `search` parameter of `search_comments` and the other search tools does
+  **not**. Passing `search: "launch AND recap"` matches the literal string
+  `launch AND recap` and returns almost nothing, with no error. This is a
+  silent wrong answer, and on a bulk pull it means caching an empty or
+  near-empty set and reporting it as complete. One keyword per pull; combine
+  locally, or partition across several single-keyword pulls and union the
+  cache. For posts, write the boolean in SQL instead: several `ILIKE`
+  conditions joined with `AND` / `OR`.
+- **An out-of-range `page` returns empty items, not an error** (search
+  tools). Trust `total_pages` from page 1 and stop there; don't probe for the end by
   paging until empty, and don't read one empty page as "the pull finished"
   if `total_pages` says otherwise.
 - **Comment coverage is not universal.** Comment text is not collected for
@@ -324,4 +378,4 @@ The rest of the discipline:
   posts tagged directly. That's usually what people want — but say which you
   measured.
 - **An empty dataset looks like a failed pull.** If preflight `total` is 0,
-  check `get_dashboard_stats` before concluding the filters are wrong.
+  check `get_totals` before concluding the filters are wrong.

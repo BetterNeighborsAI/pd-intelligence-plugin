@@ -19,7 +19,7 @@ These tools change shared data. Confirm before you write.
    "launch", and "Launch Campaign" as three tags is the most common mess these
    tools create.
 3. Resolve the entities you intend to tag to their **internal `id`s** with the
-   search tools first. Never guess an id.
+   search tools (or `run_analytics_sql` for posts) first. Never guess an id.
 
 ### `list_tags` returns two tag systems — only one is writable
 
@@ -73,7 +73,7 @@ tag_entities(dataset_id, entity_type, entity_ids, tag_ids, mode="add")
 
 **This writes direct assignments only, but reads inherit down the chain
 creator → account → post.** So tagging one creator makes every one of their
-accounts and every post on those accounts match that tag in the search tools.
+accounts and every post on those accounts match that tag in every tag-filtered read.
 
 Before tagging a large batch of posts, ask what the tag actually means:
 
@@ -97,9 +97,11 @@ rather than reporting a bigger change than happened.
 
 ### Bulk workflow
 
-1. Find the entities (`search_posts`, `search_creators`, `search_accounts`, …)
-   and collect their internal `id`s. Use the result `total` to know the real
-   size of the set — not the page you fetched.
+1. Find the entities (`search_creators`, `search_accounts`, `search_comments`,
+   or `run_analytics_sql` for posts) and collect their internal `id`s. Use the
+   result `total` (or a `count(*)` in SQL) to know the real size of the set —
+   not the page you fetched. SQL returns at most 500 rows per query, so fetch
+   a large post set's ids in slices.
 2. **Show the user what you are about to tag and how many, and get a yes.**
    For a large or hard-to-review set, list a sample and the count.
 3. Call `tag_entities` in batches, then verify with `list_tags` (`usage_count`)

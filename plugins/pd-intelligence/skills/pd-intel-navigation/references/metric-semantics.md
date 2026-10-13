@@ -46,7 +46,7 @@ values**, not as a metric that was never populated for that platform.
 ## What each platform publishes
 
 Platform coverage in any given dataset is a separate question — read the
-`platforms` map from `get_dashboard_stats` to see which of these a dataset
+`platforms` map from `get_totals` to see which of these a dataset
 actually carries.
 
 | Platform | views | likes | comments | shares | saves | quotes |

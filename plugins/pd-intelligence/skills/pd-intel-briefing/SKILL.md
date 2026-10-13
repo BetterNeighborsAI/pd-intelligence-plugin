@@ -17,7 +17,7 @@ mandatory template — but never pad with unverified claims.
 
 - Call `list_datasets` first; confirm which dataset the briefing covers (ask
   if ambiguous). Pass its integer `id` to every tool.
-- The `platforms` map from `get_dashboard_stats` shows which platforms the
+- The `platforms` map from `get_totals` shows which platforms the
   dataset actually carries. The key is `x_twitter`, not `twitter`.
 - **Before comparing platforms or quoting an engagement rate:** where a platform
   does not publish a metric, PD Intelligence stores `0`, not null. Threads and
@@ -31,16 +31,23 @@ mandatory template — but never pad with unverified claims.
 
 1. **Frame the period.** Daily → `comparison_days: 1`; weekly → `7`;
    monthly → `30`. Use the same window everywhere for consistency.
-2. **KPIs**: `get_dashboard_stats` with that `comparison_days`. The deltas
-   (`delta_label`) are your "what changed" backbone — including the
-   per-platform post counts.
-3. **Narrative**: `get_daily_summary` returns an AI-written overview with top
-   posts/creators/accounts. It may legitimately say there was no activity —
-   report that honestly rather than inventing highlights. For weekly
-   briefings it only covers the latest day, so don't rely on it alone.
-4. **Top content**: `search_posts` with `date_from`/`date_to` for the period,
-   `sort_by: "views"` (and a second pass with `engagement_rate` if depth is
-   wanted), small `page_size`. Cite `post_url`, author, and metrics.
+2. **KPIs**: `get_totals` with that `comparison_days`. Its `deltas`
+   (`{value, delta, delta_label}` per metric) are your "what changed"
+   backbone — including the per-platform post counts under `platforms`.
+3. **Narrative**: the stored daily brief is the `daily_summaries` table in
+   `run_analytics_sql` — `SELECT summary_date, narrative_text, top_posts,
+   top_creators, top_accounts FROM daily_summaries ORDER BY summary_date DESC
+   LIMIT 1` for the latest (usually yesterday's), or every day of the period
+   for a weekly briefing (it loads whole, so a `WHERE summary_date` filter is
+   safe here). A brief may legitimately say there was no activity — report
+   that honestly rather than inventing highlights.
+4. **Top content**: `run_analytics_sql` over `posts` JOIN
+   `post_metrics_latest` (`ON post_metrics_latest.post_id = posts.id`),
+   `ORDER BY views DESC LIMIT 10`, with the period passed as the
+   `date_from`/`date_to` **arguments**, not a `WHERE`. For depth, a second
+   pass by engagement rate computed in SQL over posts with views — see the
+   navigation skill's `references/analytics-sql.md`. Cite `post_url`, author,
+   and metrics.
 5. **Who's driving it**: `get_leaderboard` with `entity_type: "creators"`
    (and `"accounts"` if useful). `mode: "needs_attention"` surfaces
    underperformers worth flagging on any entity type — it applies a 50-view
@@ -48,7 +55,8 @@ mandatory template — but never pad with unverified claims.
    reported views.
 6. **Audience reaction**: `get_comment_summary` with `date_from`/`date_to`.
    The `timeline` reveals spikes — name the dates and find what caused them
-   (its `top_posts` section, or `search_posts` on those dates). Remember
+   (its `top_posts` section, or `run_analytics_sql` on posts with that day as
+   the `date_from`/`date_to` window). Remember
    its `platform_stats` shows which platforms have collected comment text —
    comment text is not collected for X/Twitter, so silence there means "not
    collected", not "no discussion".
@@ -60,8 +68,8 @@ mandatory template — but never pad with unverified claims.
 - **Flag anomalies** with a hypothesis: a comment-timeline spike, a platform
   suddenly active, follower jumps. Check whether new accounts/creators were
   added to the dataset (`total_accounts` delta) before calling growth organic.
-- **Quantify with totals** from search results (`total` field), not the page
-  you happened to fetch. For a number describing the whole period rather than a
+- **Quantify with totals** — `count(*)` in SQL or a search tool's `total`
+  field — not the rows you happened to fetch. For a number describing the whole period rather than a
   page — a share of a total, a median, a distribution — use `run_analytics_sql`
   and pass the window as `date_from`/`date_to` arguments, not as SQL.
 - **Don't report platform behavior as a data problem.** A zero view count on

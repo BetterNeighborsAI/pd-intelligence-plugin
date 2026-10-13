@@ -7,8 +7,9 @@ description: Use whenever working with PD Intelligence data (the PD Intelligence
 
 PD Intelligence is Public Democracy's social media intelligence platform. The
 MCP server exposes tools over tracked posts, accounts, creators, and comments
-across platforms, plus global news coverage tools. Most are read-only; a small
-write surface covers tags, creators, and documents.
+across platforms, plus global news coverage tools. Most reading goes through
+one tool, `run_analytics_sql`; a small write surface covers tags, creators,
+accounts, posts, and documents.
 
 ## Always start here
 
@@ -18,7 +19,7 @@ write surface covers tags, creators, and documents.
 2. Match the user's request to a dataset by name/description. If it's
    ambiguous which dataset they mean, ask — don't guess.
 3. Datasets can be empty or newly created. If a query returns nothing,
-   check `get_dashboard_stats` before concluding "no activity" — the whole
+   check `get_totals` before concluding "no activity" — the whole
    dataset may have no data yet.
 
 ## Data model
@@ -35,7 +36,7 @@ Dataset
 - **Creators vs accounts**: a creator is a person; their accounts are platform
   handles. Creator stats aggregate all linked accounts. Commenters are a
   separate population (the audience), not linked to creators.
-- **Platform keys**: read the `platforms` map from `get_dashboard_stats` to
+- **Platform keys**: read the `platforms` map from `get_totals` to
   see which platforms a dataset actually carries — coverage grows over time
   and varies per dataset, so don't assume a fixed list. The one gotcha worth
   memorizing: the key is `x_twitter`, **not** `twitter`.
@@ -77,9 +78,35 @@ and the queries that verify coverage in the actual dataset.
 ## Reads and writes
 
 Almost everything here is read-only. The write surface is small and worth
-recognizing before you call it: the tag tools, the creator tools, and the
-document tools. Writes touch shared org data — confirm with the user before a
-bulk apply or any delete, and never write to explore what a tool does.
+recognizing before you call it: the tag tools, the creator tools, the account
+and post tools, and the document tools. Writes touch shared org data — confirm
+with the user before a bulk apply or any delete, and never write to explore
+what a tool does.
+
+Some writes cost money or cannot be undone. **Get an explicit yes from the user
+before each of these calls**, naming the account or post and the consequence:
+
+- `add_account` / `add_post` with `confirm=false` — a **paid** external lookup,
+  even though nothing is written. With `confirm=true`, `add_account` **starts
+  paid collection** (and may use one of the org's subscription slots);
+  `add_post` saves the post.
+- `set_collection(tracking=true)` spends collection budget; `tracking=false`
+  stops collection for the dataset.
+- `erase_account` — erases the account's whole history **from this dataset**;
+  irreversible, and every past total changes. Pausing is `set_collection`.
+- `update_account` — edits the **pooled** record, so the change reaches every
+  dataset that collects the account (system admin only).
+
+The account and post tools are covered in the `pd-intel-creators` skill.
+
+**Retired tools.** If you remember a tool from older docs, it no longer exists:
+`list_accounts` / `list_creators` → `search_accounts` / `search_creators` with
+no filters; `search_posts`, `get_post_detail`, `get_account_detail` and
+`get_daily_summary` → `run_analytics_sql`; `get_commenter_detail` →
+`list_commenters(commenter_id=)` + `search_comments(commenter_id=)`;
+`get_comment_thread` → `search_comments(root_comment_id=)`;
+`get_dashboard_stats` → `get_totals(comparison_days=)`. Paid-promotion fields
+(`is_paid`, `amount_paid`, …) are no longer returned — PD records no payments.
 
 ## How these skills fit together
 
@@ -104,25 +131,27 @@ Distribute puts it in PD Docs. Curation (`pd-intel-tagging`), bulk extraction
 | Goal | Tool |
 |------|------|
 | See available datasets | `list_datasets` (always first) |
-| KPIs with period-over-period deltas | `get_dashboard_stats` (`comparison_days`) |
-| AI narrative of today's activity | `get_daily_summary` |
-| Find/filter posts | `search_posts` (keyword, platform, dates, tags, sort) |
-| Full post info | `get_post_detail` (needs internal post `id`) |
+| Headline counts (all time or a window) | `get_totals` (`date_from`/`date_to`) |
+| KPIs with period-over-period deltas | `get_totals` with `comparison_days` → `deltas` (`{value, delta, delta_label}` per metric, plus per platform) |
+| The stored daily brief (AI narrative), today's or any past day's | `run_analytics_sql` on `daily_summaries` |
+| Find/filter posts, one post by `id`, a day's top posts | `run_analytics_sql` — `posts` JOIN `post_metrics_latest`; keyword = `ILIKE` on `post_text`/`title` |
+| Corpus-level stats: totals, medians, percentiles, distributions, cohorts, custom joins | `run_analytics_sql` — read-only DuckDB SQL, **the main read surface**. See `references/analytics-sql.md` for the lookup patterns; pass windows as the `date_from`/`date_to`/`platform`/`tag_names` **arguments**, never as SQL `WHERE` clauses; name the text columns you need; aggregate in SQL (500-row result cap) |
 | Rankings (best / underperforming) | `get_leaderboard` (`entity_type`, `mode`) |
 | Comment activity overview | `get_comment_summary` (dataset-wide or one post) |
-| Find/filter comments | `search_comments` |
-| Full reply thread of a comment | `get_comment_thread` (see pitfall below) |
+| Find/filter comments | `search_comments` (reads the full comment tables) |
+| Full reply thread of a comment | `search_comments(root_comment_id=…)` — root plus every reply, oldest first (see pitfall below) |
 | Audience members ranked by activity | `list_commenters` |
-| One commenter + recent comments | `get_commenter_detail` |
-| All accounts with stats | `list_accounts` / filtered: `search_accounts` |
-| One account's profile | `get_account_detail` |
-| All creators with aggregate stats | `list_creators` / filtered: `search_creators` |
-| One creator's profile | `get_creator_detail` |
+| One commenter's profile + comments | `list_commenters(commenter_id=…)` + `search_comments(commenter_id=…)` |
+| Accounts with stats + subscription state | `search_accounts` (no filters = every account with posts, paged) |
+| One account's profile fields, full roster incl. zero-post accounts, tracking history | `run_analytics_sql` on `accounts` (+ `account_metrics_latest`, `subscriptions`) |
+| Creators with aggregate stats | `search_creators` (no filters = every creator, paged) |
+| One creator's profile (incl. contact fields) | `get_creator_detail` |
 | Available labels | `list_tags` |
-| Corpus-level stats: totals, medians, percentiles, distributions, cohorts, custom joins | `run_analytics_sql` — read-only DuckDB SQL over the whole dataset. See `references/analytics-sql.md`; pass windows as the `date_from`/`date_to`/`platform`/`tag_names` **arguments**, never as SQL `WHERE` clauses |
 | Audience overlap between accounts | `get_cross_account_commenters` (reads the full table — do not reimplement in SQL) |
 | Create/edit/delete tags, tag entities in bulk | `create_tag`, `update_tag`, `delete_tag`, `tag_entities` — **writes**; see the `pd-intel-tagging` skill |
 | Add/edit/remove creators | `create_creator`, `update_creator`, `delete_creators` — **writes**, need `creators_manage`; see the `pd-intel-creators` skill |
+| Add an account, group it under a creator, start/stop collection, erase it from the dataset | `add_account` (two-step, **paid**), `set_account_creator`, `set_collection`, `erase_account` (**irreversible**, OAuth only) — **writes**, need `accounts_manage`; `update_account` (pooled record, system admin). See the `pd-intel-creators` skill |
+| Add a missing post by URL | `add_post` (two-step, **paid** check) — **write**, needs `content_edit`; see the `pd-intel-creators` skill |
 | Find / re-read a document already published | `list_documents` (metadata, `query` substring match), `read_document` (body, paged), `get_document_download_url` (signed link for a shell fetch) — reads; drafts never appear |
 | Publish / share / audit a document | `publish_document`, `begin_document_upload` / `append_document_chunk` / `finish_document_upload` (large bodies), `share_document`, `get_document_sharing` — **writes**; see the `pd-intel-documents` skill |
 | News coverage, media framing, headline trends | `get_news_briefing`, `list_news_dates`, `get_news_outlet`, `get_news_roundup`, `get_news_trend`, `get_news_word_cloud` — **no `dataset_id`**; global, need the `news` entitlement, may be absent from your tools entirely; see the `pd-intel-news` skill |
@@ -135,19 +164,21 @@ Distribute puts it in PD Docs. Curation (`pd-intel-tagging`), bulk extraction
   not X/Twitter). Check `get_comment_summary`'s `platform_stats` to see which
   platforms have collected comments before reporting "no discussion" — the
   data may simply not be gathered for that platform.
-- **`get_comment_thread` can be enormous** (a popular comment can have
-  hundreds of replies). Check `replies_count` on the comment first; for large
-  threads prefer `search_comments` with `post_id` + sorting instead.
-- **Use leaderboard for rankings, search for filtering.** `get_leaderboard`
-  answers "top/worst N"; `search_posts`/`search_accounts`/`search_creators`
-  answer "find things matching X". `mode="needs_attention"` finds
+- **A thread can be enormous** (a popular comment can have hundreds of
+  replies). Check `replies_count` on the root first; `search_comments` with
+  `root_comment_id` pages the thread (max 100 a page), so read only the pages
+  you need, or sort a post's comments by `likes` instead.
+- **Use leaderboard for rankings, search or SQL for filtering.**
+  `get_leaderboard` answers "top/worst N"; `search_accounts`/`search_creators`
+  and `run_analytics_sql` over `posts` answer "find things matching X". `mode="needs_attention"` finds
   underperformers, consistently across posts, accounts and creators: a
   50-view floor, engagement ascending, capped to `limit`. Its scope is
   entities that reported views, so it is not a complete census — say so rather
   than implying nothing else underperformed.
 - **Report totals, not page counts.** Search tools paginate (default 25,
   max 100 per page) and return `total` — cite the total, and page through
-  only when you actually need more items.
+  only when you actually need more items. In SQL, count with `count(*)` rather
+  than counting returned rows; results stop at 500 rows.
 - **Tags come in two kinds** (permanent and CLAI tags) and are scoped per
   dataset. Filter by `tag_names`/`clai_tag_names` — names resolve within the
   dataset. Account tag filters inherit from the parent creator.

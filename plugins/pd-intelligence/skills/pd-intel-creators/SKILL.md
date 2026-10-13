@@ -1,6 +1,6 @@
 ---
 name: pd-intel-creators
-description: Use when analyzing, comparing, or managing creators or accounts in PD Intelligence data — rankings, top performers, underperformers, follower growth, cross-platform presence, cohort or program tracking, "how is creator X doing", building creator shortlists, and also roster upkeep: adding a creator, editing a creator's profile or cohort, or removing creators from a dataset.
+description: Use when analyzing, comparing, or managing creators or accounts in PD Intelligence data — rankings, top performers, underperformers, follower growth, cross-platform presence, cohort or program tracking, "how is creator X doing", building creator shortlists, and also roster upkeep: adding a creator, editing a creator's profile or cohort, removing creators from a dataset, adding or tracking an account, linking an account to a creator, starting, stopping or pausing collection for an account, erasing an account from a dataset, correcting an account's record, or adding a missing post by URL.
 ---
 
 # PD Intelligence — Creator & Account Analysis
@@ -20,7 +20,7 @@ breakdowns, and time-windowed metrics.
   `platforms_count`); account metrics roll up to the creator. Commenters are
   the audience — a separate population entirely.
 - The platform key is `x_twitter`, not `twitter`. Read the `platforms` map
-  from `get_dashboard_stats` for what a dataset actually carries.
+  from `get_totals` for what a dataset actually carries.
 - **Engagement metrics are not comparable across platforms as-is, and the
   default ways of ranking creators punish the wrong people.** Where a platform
   does not publish a metric it is stored as `0` — Threads and Bluesky publish no
@@ -47,13 +47,23 @@ breakdowns, and time-windowed metrics.
 4. **Break down by platform**: `search_accounts` with `creator_id` lists a
    creator's handles with per-account stats (`followers_count`,
    `engagement_rate`, `active_days`, `last_post`). Account tag filters
-   inherit from the parent creator. `get_account_detail` adds
-   `verification_status`, `account_status`, and `tracking_enabled`.
-5. **Window comparisons**: `list_creators`/`list_accounts`/`search_*` accept
-   `start_date`/`end_date` — run two windows (e.g. this month vs last) to
-   measure growth instead of eyeballing lifetime totals.
-6. **Their content**: `search_posts` with `search: "<username>"` and
-   `sort_by: "views"` or `"engagement_rate"` shows what's working for them.
+   inherit from the parent creator. Each row also says whether the dataset is
+   collecting it now (`subscribed`, `subscription_started_at`,
+   `subscription_ended_at`). `search_accounts` lists accounts with at least one
+   post; for profile fields (`profile_url`, `verification_status`,
+   `account_status`, `notes`), zero-post accounts, and the full tracking
+   history, query the `accounts` and `subscriptions` tables with
+   `run_analytics_sql` (pattern in the navigation skill's
+   `references/analytics-sql.md`).
+5. **Window comparisons**: `search_creators`/`search_accounts` accept
+   `start_date`/`end_date` (with no other filters they page through everyone)
+   — run two windows (e.g. this month vs last) to measure growth instead of
+   eyeballing lifetime totals.
+6. **Their content**: `run_analytics_sql` over `posts` JOIN
+   `post_metrics_latest`, filtered on `posts.account_id` (the account ids from
+   step 4), ordered by views — or by engagement rate computed over posts with
+   views — shows what's working for them. Pass any window as the
+   `date_from`/`date_to` arguments.
 7. **Labels**: `list_tags` (filter `entity_type: "creator"` or `"account"`)
    shows the dataset's labeling scheme — useful for cohort/category cuts.
 
@@ -65,10 +75,9 @@ a user's capabilities from the tools — attempt the call and report a refusal
 plainly rather than predicting it. Confirm with the user before creating,
 editing, or deleting anything.
 
-**Creating a creator makes the profile only — linking accounts to it is a
-dashboard action.** A newly created creator therefore has no accounts, no
-posts, and no stats, and that is expected, not a failure. Say so, and point the
-user to the dashboard to attach handles.
+**Creating a creator makes the profile only.** A newly created creator has no
+accounts, no posts, and no stats until you group accounts under it with
+`set_account_creator` (see below) — that is expected, not a failure. Say so.
 
 - `create_creator(dataset_id, first_name, ...)` — only `first_name` is
   required; `country` defaults to `"USA"`. `email` doubles as the duplicate
@@ -94,6 +103,61 @@ To label creators as a cohort or program rather than editing profiles one by
 one, use the tagging tools — see the `pd-intel-tagging` skill. A creator tag
 inherits down to their accounts and posts, so it is almost always the cheaper
 and more durable move.
+
+## Managing accounts and posts (write tools)
+
+Accounts are **pooled**: one account record is shared by every dataset that
+collects it. Adding an account subscribes this dataset to it; erasing drops
+only this dataset's claim. Nothing here deletes a pooled account, and no tool
+edits or deletes a post. All account tools except `update_account` need
+`accounts_manage`; `add_post` needs `content_edit`. As with creators, attempt
+the call and report a refusal plainly.
+
+**Several of these spend money or cannot be undone. Get an explicit yes before
+each such call**, naming the account and the consequence.
+
+- `add_account(dataset_id, platform, profile_url, ..., confirm=false)` — two
+  steps. Pass `profile_url`; a `username` alone is refused. `confirm=false`
+  only **reviews**: a **paid** external profile lookup that writes nothing —
+  read `review.status`, `review.errors` and `review.warnings`. Show the review
+  to the user, then call again with `confirm=true` to subscribe, which
+  **starts paid collection** and, on an organization's own dataset, uses a
+  subscription slot. `tracking_enabled=false` adds the account without
+  collecting. `creator_id` groups it on the way in — and on an account the
+  dataset already tracks, a different `creator_id` moves it. Check
+  `search_accounts` or the `accounts` table first: the account may already be
+  in the dataset.
+- `set_account_creator(dataset_id, account_id, creator_id)` — groups an
+  account under a creator of this dataset; `creator_id=null` ungroups it
+  (history intact). An account grouped under a different creator is refused —
+  ungroup first, then regroup.
+- `set_collection(dataset_id, tracking, account_ids=[…] | creator_id=…)` —
+  pass exactly one of the two. `tracking=false` **pauses**: nothing is
+  deleted, history stays, and a restart opens a fresh period (the gap stays a
+  gap). `tracking=true` spends collection budget, and restarts only accounts
+  this dataset has held before — a new account goes through `add_account`.
+  Results are per account (`started`, `already_tracking`, `stopped`,
+  `not_tracking`, `refused`); report `changed_count` and any refusals rather
+  than "done". By `creator_id`, a resume is all-or-nothing on slots.
+- `erase_account(dataset_id, account_id, confirm_username)` — erases the
+  account and **its whole history from this dataset**: every collection
+  period, its creator grouping and the dataset's tags on it, and every past
+  total is recomputed without it. **Irreversible.** It is not pausing — if the
+  user wants to stop collecting, that is `set_collection(tracking=false)`;
+  ask which they mean. The handle must be typed back as `confirm_username`.
+  Works only from an OAuth-connected client; an API key is refused, so point
+  the user to the dashboard if it is.
+- `update_account(dataset_id, account_id, ...)` — corrects the **pooled**
+  record (handle, display name, profile URL, statuses, notes), so the edit
+  reaches every dataset collecting the account. System admin only; say that
+  scope out loud before calling it.
+- `add_post(dataset_id, account_id, post_url, confirm=false)` — adds a post
+  the collector missed, for an account this dataset holds. `confirm=false`
+  is a **paid** check (scrapes the post) that returns its caption, publish
+  time, metrics and a `verification_token`; nothing is written. Confirm with
+  `confirm=true` **and the `verification_token`** — without it the post is
+  checked again, a second paid lookup. The check's `post_id` is the
+  platform's; the confirmed result's `id` is PD's.
 
 ## Analysis standards
 
