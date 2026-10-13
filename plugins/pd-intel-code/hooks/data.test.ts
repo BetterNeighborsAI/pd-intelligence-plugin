@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { followersSql, isStale, orderByRecent, plainPreview, plural, platformName, pushRecent, requestDone, requestStarted, startRequest, toAccountStats, toCommentSummary, toPostDetail, toPosts, toSummary, toTopPosts, viewsLabel, lastDays, rowsOf, shortDay, toActivity, toAttention, toFollowers } from './data'
+import { followersSql, isStale, orderByRecent, plainPreview, plural, platformName, pushRecent, requestDone, requestStarted, startRequest, toAccountStats, toCommentSummary, toPostDetail, toSummary, toTopPosts, accountPostsSql, postDetailSql, topPostsSql, viewsLabel, lastDays, rowsOf, shortDay, toActivity, toAttention, toFollowers } from './data'
 
 test('days run oldest first, across month ends', async () => {
   const days = lastDays('2026-10-09')
@@ -81,18 +81,20 @@ test('counts read as words, and every tracked platform has its proper name', asy
 })
 
 test('the daily summary keeps its narrative and day; posts keep their internal id', async () => {
-  expect(toSummary({ narrative_text: '## Day', summary_date: '2026-10-08' })).toEqual({ date: '2026-10-08', narrative: '## Day' })
-  expect(() => toSummary({ narrative_text: null })).toThrow()
-  expect(toPosts({ items: [{ id: 7, post_id: 'p7', platform: 'threads', author_username: 'bo', post_text: null, views: 0, content_type: 'video' }] })).toEqual([
-    { id: 7, postId: 'p7', platform: 'Threads', author: 'bo', text: '', views: 0, contentType: 'video' },
-  ])
+  expect(toSummary([{ narrative_text: '## Day', summary_date: '2026-10-08T00:00:00' }])).toEqual({ date: '2026-10-08', narrative: '## Day' })
+  expect(() => toSummary([{ narrative_text: null }])).toThrow()
+  expect(() => toSummary([])).toThrow()
   expect(toTopPosts([{ id: 9, post_id: 'p9', platform: 'instagram', author_username: 'a', text: 't', views: 5, content_type: 'sidecar' }])[0]).toMatchObject({ id: 9, contentType: 'sidecar' })
 })
 
 test('post detail and comment summary read the fields the panel shows', async () => {
   expect(
-    toPostDetail({ views: 10, likes: 2, comments: 1863, shares: 0, engagement_rate: 11.24, post_timestamp: '2026-10-06T13:46:21Z', post_url: 'https://x/p', content_type: 'video' }),
-  ).toEqual({ views: 10, likes: 2, comments: 1863, shares: 0, engagementRate: 11.24, postedAt: '2026-10-06T13:46:21Z', url: 'https://x/p', contentType: 'video' })
+    toPostDetail([{ views: 1000, likes: 100, comments: 20, shares: 5, post_timestamp: '2026-10-06T13:46:21Z', post_url: 'https://x/p', content_type: 'video' }]),
+  ).toEqual({ views: 1000, likes: 100, comments: 20, shares: 5, engagementRate: 12.5, postedAt: '2026-10-06T13:46:21Z', url: 'https://x/p', contentType: 'video' })
+  // A hidden like count (-1) is none; no views, no rate; no row, no post.
+  expect(toPostDetail([{ views: 1000, likes: -1, comments: 50, shares: 0 }]).engagementRate).toBe(5)
+  expect(toPostDetail([{ views: 0, likes: 5, comments: 1, shares: 0 }]).engagementRate).toBe(0)
+  expect(() => toPostDetail([])).toThrow()
   expect(
     toCommentSummary({ summary_stats: { total_comments: 42, total_commenters: 40, author_reply_count: 1 }, timeline: [{ date: '2026-10-07', count: 13 }] }),
   ).toEqual({ collected: 42, commenters: 40, authorReplies: 1, byDay: [{ day: '2026-10-07', value: 13 }] })
@@ -139,4 +141,10 @@ test('a request is matched to its turn once, then to its answer', async () => {
 test('an answer preview is plain text, cut short', async () => {
   expect(plainPreview('## Why it worked\n\nThe **hook** landed — see [the post](https://x/p).', 200)).toBe('Why it worked The hook landed — see the post.')
   expect([...plainPreview('x'.repeat(300), 200)].length).toBe(200)
+})
+
+test("the panel's SQL never carries input unescaped, and reads a post's text when it has no title", async () => {
+  expect(accountPostsSql("o'brien")).toContain("lower('o''brien')")
+  expect(postDetailSql(42.9)).toContain('WHERE p.id = 42')
+  expect(topPostsSql('2026-10-02')).toContain("coalesce(nullif(p.title, ''), p.post_text, '')")
 })

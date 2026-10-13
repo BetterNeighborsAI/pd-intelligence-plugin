@@ -20,6 +20,8 @@ const STATS = JSON.stringify({
   platforms: { x_twitter: { value: 75165, delta_label: '+4,250' }, youtube: { value: 921, delta_label: '+72' } },
   comparison_days: 7,
 })
+// get_totals answers the period-over-period numbers under `deltas`.
+const totalsOf = (stats: string) => JSON.stringify({ total_posts: 1, platforms: {}, dataset: {}, deltas: JSON.parse(stats) })
 const ACTIVITY = JSON.stringify({
   columns: ['day', 'platform', 'posts', 'accounts'],
   rows: [
@@ -37,23 +39,28 @@ const topOf = (id: string, author: string) =>
     columns: ['id', 'post_id', 'platform', 'author_username', 'text', 'views', 'content_type'],
     rows: [[id === 'p1' ? 1001 : 3003, id, 'x_twitter', author, 'Big\nnews today', 1200000, 'video']],
   })
-const POST_DETAIL = JSON.stringify({ views: 1200000, likes: 5000, comments: 1863, shares: 12, engagement_rate: 4.2, post_timestamp: '2026-10-06T13:46:21Z', post_url: 'https://x.com/alice/p1', content_type: 'video' })
+// run_analytics_sql answers `{ columns, rows }`.
+const sqlRows = (columns: string[], rows: unknown[][]) => JSON.stringify({ columns, rows, row_count: rows.length })
+const POST_COLUMNS = ['id', 'post_id', 'platform', 'author_username', 'text', 'views', 'content_type']
+const POST_DETAIL = sqlRows(
+  ['id', 'post_id', 'platform', 'author_username', 'post_url', 'post_timestamp', 'content_type', 'views', 'likes', 'comments', 'shares'],
+  [[1001, 'p1', 'x_twitter', 'alice', 'https://x.com/alice/p1', '2026-10-06T13:46:21Z', 'video', 1200000, 5000, 1863, 12]],
+)
 const COMMENTS = JSON.stringify({ summary_stats: { total_comments: 42, total_commenters: 40, author_reply_count: 0 }, timeline: [{ date: '2026-10-08', count: 29 }] })
 const ACCOUNTS = JSON.stringify({
   items: [{ author_username: 'quietacct', platform: 'instagram', followers_count: 3, total_posts: 53, total_views: 2245, total_likes: 10, total_comments: 2, engagement_rate: 0.5, first_post: '2025-07-25T15:07:49Z', last_post: '2026-10-08T19:10:52Z', active_days: 53 }],
 })
-const ACCOUNT_POSTS = JSON.stringify({
-  items: [{ id: 777, post_id: 'p777', platform: 'instagram', author_username: 'quietacct', post_text: 'Coupons carousel', views: 0, content_type: 'sidecar' }],
-})
+const ACCOUNT_POSTS = sqlRows(POST_COLUMNS, [[777, 'p777', 'instagram', 'quietacct', 'Coupons carousel', 0, 'sidecar']])
 const WEAK = JSON.stringify({
   result: [{ author_username: 'quietacct', platform: 'instagram', total_posts: 53, total_views: 2245, total_likes: -53, engagement_rate: -0.27 }],
 })
 
-const SUMMARY = JSON.stringify({ narrative_text: '## Biggest stories\n\n[@carol](https://x/c) led the day.', summary_date: '2026-10-08' })
-const DAY_POSTS = JSON.stringify({
-  items: [{ id: 501, post_id: 'p501', platform: 'instagram', author_username: 'carol', post_text: 'Day winner', views: 9000, content_type: 'video' }],
-  total: 1,
-})
+const summaryOf = (narrative: string) => sqlRows(['summary_date', 'narrative_text'], [['2026-10-08', narrative]])
+const SUMMARY = summaryOf('## Biggest stories\n\n[@carol](https://x/c) led the day.')
+const DAY_POSTS = sqlRows(POST_COLUMNS, [[501, 'p501', 'instagram', 'carol', 'Day winner', 9000, 'video']])
+// The SQL the panel sends for each of its views, told apart by what it reads.
+const isSql = (tool: string, args: Record<string, unknown>, part: string) => tool === 'run_analytics_sql' && String(args.sql).includes(part)
+const isSummary = (tool: string, args: Record<string, unknown>) => isSql(tool, args, 'daily_summaries')
 
 type Reply = (tool: string, args: Record<string, unknown>) => string | { error: string } | Promise<string | { error: string }>
 
@@ -63,17 +70,18 @@ const answer: Reply = (tool, args) => {
   if (tool === 'get_leaderboard') return WEAK
   if (tool === 'run_analytics_sql') {
     const sql = String(args.sql)
+    if (sql.includes('daily_summaries')) return SUMMARY
+    if (sql.includes('WHERE p.id =')) return POST_DETAIL
+    if (sql.includes('lower(p.author_username)')) return ACCOUNT_POSTS
+    if (sql.includes('post_metrics_latest') && !sql.includes('post_timestamp >=')) return DAY_POSTS
     if (sql.includes('account_metrics')) return FOLLOWERS
     if (sql.includes('post_metrics_latest')) return args.dataset_id === 3 ? topOf('p3', 'bob') : topOf('p1', 'alice')
     return ACTIVITY
   }
-  if (tool === 'get_daily_summary') return SUMMARY
-  if (tool === 'get_post_detail') return POST_DETAIL
   if (tool === 'get_comment_summary') return COMMENTS
   if (tool === 'search_accounts') return ACCOUNTS
-  if (tool === 'search_posts' && args.search) return ACCOUNT_POSTS
-  if (tool === 'search_posts') return DAY_POSTS
-  return STATS
+  if (tool === 'get_totals') return totalsOf(STATS)
+  return { error: `Unknown tool: ${tool}` }
 }
 const COMPOSE = { model: 'm', promptModel: 'm', surfaces: [], tools: [], outputStyle: null, traits: [] } as const
 const SIDE = { component: 'Pane', requestId: 'pd', props: { title: 'PD Intelligence', isFocused: false, bodyColumns: 50, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} } } as const
@@ -86,7 +94,7 @@ const typed = (command: string, args = '') =>
 // The tools a connected server lists, as $.tool.list answers them.
 const toolsOf = (server: string, names: readonly string[]) =>
   names.map(name => ({ name: `mcp__${server}__${name}`, description: '', mcp: true }))
-const PD_TOOLS = ['list_datasets', 'get_dashboard_stats', 'search_posts', 'delete_tag'] as const
+const PD_TOOLS = ['list_datasets', 'get_totals', 'run_analytics_sql', 'delete_tag'] as const
 
 // A chart the panel drew, found by what it shows: an Svg by its alt text, the terminal's sparkline by its bars.
 type Found = { type: string; text: string; props: Record<string, unknown> }
@@ -275,6 +283,7 @@ test('destructive writes are put to the person even when a rule allows them', as
   on('tool.check', () => ({ decision: 'allow' }))
 
   expect((await $.tool.check({ tool: DELETE, input: { dataset_id: 16, tag_id: 1 } })).decision).toBe('ask')
+  expect((await $.tool.check({ tool: `mcp__${SERVER}__erase_account`, input: { dataset_id: 16, account_id: 3, confirm_username: 'x' } })).decision).toBe('ask')
   expect((await $.tool.check({ tool: SEARCH, input: { dataset_id: 16 } })).decision).toBe('allow')
   // Another server's tool of the same name is not PD's to guard.
   expect((await $.tool.check({ tool: 'mcp__github__delete_tag', input: {} })).decision).toBe('allow')
@@ -329,8 +338,8 @@ test("a dataset switched mid-load never shows the earlier dataset's answers", as
   const clock = connector(on, {}, SERVER, async (tool, args) => {
     if (args.dataset_id !== 16) return answer(tool, args)
     await clock.sleep(1000)
-    return tool === 'get_dashboard_stats'
-      ? JSON.stringify({ ...JSON.parse(STATS), total_posts: { value: 11111, delta_label: '+1' } })
+    return tool === 'get_totals'
+      ? totalsOf(JSON.stringify({ ...JSON.parse(STATS), total_posts: { value: 11111, delta_label: '+1' } }))
       : answer(tool, args)
   })
   const first = $.command.run(typed('pd-dataset', '16'))
@@ -557,7 +566,7 @@ test('when permissions refuse the panel its lookups, it says how to allow them',
   const ui = await $.ui.mount({ plugin: 'pd-intel-code', surface: 'desktop', ...PANEL })
   const shown = await ui.find({ text: /permissions stopped the panel/ })
   expect(shown?.text).toContain(
-    'list_datasets, get_dashboard_stats, run_analytics_sql, get_leaderboard, get_daily_summary, search_posts, get_post_detail, get_comment_summary, search_accounts',
+    'list_datasets, get_totals, run_analytics_sql, get_leaderboard, get_comment_summary, search_accounts',
   )
   expect(shown?.text).toContain('switch out of auto mode')
   expect(await ui.find({ text: /classifier/ })).toBeUndefined()
@@ -615,7 +624,7 @@ test('Today opens inside the panel: the daily summary and that day’s top posts
 test('a failing daily summary fails only Today, and Today is fetched once a day', async ($, on) => {
   let summaries = 0
   connector(on, {}, SERVER, (tool, args) => {
-    if (tool !== 'get_daily_summary') return answer(tool, args)
+    if (!isSummary(tool, args)) return answer(tool, args)
     summaries++
     return summaries === 1 ? { error: 'summary not ready' } : SUMMARY
   })
@@ -634,11 +643,11 @@ test('a failing daily summary fails only Today, and Today is fetched once a day'
 
 test("a slow Today for one dataset never shows under another", async ($, on) => {
   const clock = connector(on, {}, SERVER, async (tool, args) => {
-    if (tool === 'get_daily_summary' && args.dataset_id === 16) {
+    if (isSummary(tool, args) && args.dataset_id === 16) {
       await clock.sleep(1000)
-      return JSON.stringify({ narrative_text: 'Sixteen', summary_date: '2026-10-08' })
+      return summaryOf('Sixteen')
     }
-    return tool === 'get_daily_summary' ? JSON.stringify({ narrative_text: 'Three', summary_date: '2026-10-08' }) : answer(tool, args)
+    return isSummary(tool, args) ? summaryOf('Three') : answer(tool, args)
   })
   await $.command.run(typed('pd-dataset', '16'))
   const ui = await $.ui.mount({ plugin: 'pd-intel-code', surface: 'desktop', ...PANEL })
@@ -793,7 +802,7 @@ test('an account is found on its own platform even when similar handles fill the
   const others = JSON.stringify({ items: Array.from({ length: 25 }, (_, i) => ({ author_username: `quietacct${i}`, platform: 'x_twitter' })) })
   connector(on, {}, SERVER, (tool, args) => {
     if (tool === 'search_accounts') return args.platform === 'instagram' ? ACCOUNTS : others
-    if (tool === 'search_posts' && args.search) return args.platform === 'instagram' ? ACCOUNT_POSTS : JSON.stringify({ items: [] })
+    if (isSql(tool, args, 'lower(p.author_username)')) return args.platform === 'instagram' ? ACCOUNT_POSTS : sqlRows(POST_COLUMNS, [])
     return answer(tool, args)
   })
   await $.command.run(typed('pd-dataset', '16'))
@@ -806,7 +815,7 @@ test('an account is found on its own platform even when similar handles fill the
 test('Refresh reloads the screen that is open', async ($, on) => {
   let summaries = 0
   connector(on, {}, SERVER, (tool, args) => {
-    if (tool !== 'get_daily_summary') return answer(tool, args)
+    if (!isSummary(tool, args)) return answer(tool, args)
     return ++summaries === 1 ? { error: 'connector still connecting' } : SUMMARY
   })
   await $.command.run(typed('pd-dataset', '16'))

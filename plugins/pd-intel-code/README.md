@@ -81,12 +81,9 @@ uses in your permission settings, or switch out of auto mode. In `~/.claude/sett
 "permissions": {
   "allow": [
     "mcp__SERVER__list_datasets",
-    "mcp__SERVER__get_dashboard_stats",
+    "mcp__SERVER__get_totals",
     "mcp__SERVER__run_analytics_sql",
     "mcp__SERVER__get_leaderboard",
-    "mcp__SERVER__get_daily_summary",
-    "mcp__SERVER__search_posts",
-    "mcp__SERVER__get_post_detail",
     "mcp__SERVER__get_comment_summary",
     "mcp__SERVER__search_accounts"
   ]
@@ -101,7 +98,7 @@ uses in your permission settings, or switch out of auto mode. In `~/.claude/sett
 | `/pd-dataset ID` / `/pd-dataset off` | Choose or clear the dataset by id. |
 | `/pd-evidence [on \| off \| clear]` | The sources list and the save-for-charts switch, as commands. |
 | `/pd-intel-code:explore`, `/pd-intel-code:report` | What the panel's two buttons run. |
-| Write guard | `delete_tag`, `delete_creators` and `share_document` always ask first, even if a permission rule allows all PD tools. (Under bypass-permissions mode the mode still decides.) |
+| Write guard | `delete_tag`, `delete_creators`, `erase_account` and `share_document` always ask first, even if a permission rule allows all PD tools. (Under bypass-permissions mode the mode still decides.) |
 
 ## Install
 

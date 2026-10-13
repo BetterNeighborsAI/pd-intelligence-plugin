@@ -21,7 +21,7 @@ import type {
 // The PD Intelligence server is recognised by its tools, never by its name: the
 // connector is named differently per install (PD_Intelligence, claude_ai_PD_Intelligence,
 // whatever someone typed in `claude mcp add`). A server with both of these is PD.
-export const PD_SIGNATURE = ['list_datasets', 'get_dashboard_stats'] as const
+export const PD_SIGNATURE = ['list_datasets', 'get_totals', 'run_analytics_sql'] as const
 // Any MCP tool but this mod's own; the hook checks the server is PD's.
 export const MCP_TOOL = /^mcp__(?!pd-intel-code__)/
 
@@ -142,10 +142,31 @@ export const followersSql = (from: string, to: string) =>
   `filled AS (SELECT g.day, (SELECT s.followers FROM snaps s WHERE s.account_id = g.account_id AND s.day <= g.day ORDER BY s.day DESC LIMIT 1) AS followers FROM grid g) ` +
   `SELECT day, SUM(followers) AS followers FROM filled GROUP BY day ORDER BY day`
 
+// A post as the panel lists it; its title only when it has one (Threads' are empty, not null).
+const POST_ROW =
+  `SELECT p.id AS id, p.post_id, p.platform, p.author_username, left(regexp_replace(coalesce(nullif(p.title, ''), p.post_text, ''), '\\s+', ' ', 'g'), 120) AS text, m.views, p.content_type `
+
 export const topPostsSql = (from: string) =>
-  `SELECT p.id AS id, p.post_id, p.platform, p.author_username, left(regexp_replace(coalesce(p.title, p.post_text, ''), '\\s+', ' ', 'g'), 120) AS text, m.views, p.content_type ` +
+  POST_ROW +
   `FROM posts p JOIN post_metrics_latest m ON m.post_id = p.id ` +
   `WHERE p.post_timestamp >= DATE '${from}' ORDER BY m.views DESC NULLS LAST LIMIT 3`
+
+// One day's top posts: the day itself is the call's date_from/date_to window.
+export const dayPostsSql = () => POST_ROW + `FROM posts p JOIN post_metrics_latest m ON m.post_id = p.id ORDER BY m.views DESC NULLS LAST LIMIT 5`
+
+// An account's latest posts: its platform is the call's platform filter.
+export const accountPostsSql = (username: string) =>
+  POST_ROW +
+  `FROM posts p LEFT JOIN post_metrics_latest m ON m.post_id = p.id ` +
+  `WHERE lower(p.author_username) = lower('${username.replace(/'/g, "''")}') ORDER BY p.post_timestamp DESC LIMIT 5`
+
+// One post's numbers, by PD's internal id (a number, never input text).
+export const postDetailSql = (id: number) =>
+  `SELECT p.id, p.post_id, p.platform, p.author_username, p.post_url, p.post_timestamp, p.content_type, m.views, m.likes, m.comments, m.shares ` +
+  `FROM posts p LEFT JOIN post_metrics_latest m ON m.post_id = p.id WHERE p.id = ${Math.trunc(id)}`
+
+// The latest stored daily brief (PD writes one a day; the table keeps them all).
+export const SUMMARY_SQL = `SELECT summary_date, narrative_text FROM daily_summaries ORDER BY summary_date DESC LIMIT 1`
 
 const sqlDay = (v: unknown) => String(v).slice(0, 10)
 
@@ -214,12 +235,9 @@ export const isStale = (s: PdSnapshot, today: string) =>
 // The read-only tools the panel itself calls; an allow rule for these lets it work in auto mode.
 export const PANEL_TOOLS = [
   'list_datasets',
-  'get_dashboard_stats',
+  'get_totals',
   'run_analytics_sql',
   'get_leaderboard',
-  'get_daily_summary',
-  'search_posts',
-  'get_post_detail',
   'get_comment_summary',
   'search_accounts',
 ] as const
@@ -236,38 +254,28 @@ const num = (v: unknown) => Number(v ?? 0) || 0
 const str = (v: unknown) => (v == null ? '' : String(v))
 const unknownShape = () => new Error('PD Intelligence answered in a shape the panel does not know')
 
-export function toSummary(parsed: unknown): PdSummary {
-  const r = (parsed ?? {}) as Record<string, unknown>
+// The daily_summaries row SUMMARY_SQL reads.
+export function toSummary(rows: readonly Record<string, unknown>[]): PdSummary {
+  const r = rows[0] ?? {}
   if (typeof r.narrative_text !== 'string' || r.narrative_text.trim() === '') {
     throw new Error('PD Intelligence has no daily summary for this dataset yet')
   }
-  return { date: str(r.summary_date), narrative: r.narrative_text }
+  return { date: str(r.summary_date).slice(0, 10), narrative: r.narrative_text }
 }
 
-// search_posts answers `{ items: [...] }`.
-export function toPosts(parsed: unknown): PdTopPost[] {
-  const items = (parsed as { items?: unknown } | undefined)?.items
-  if (!Array.isArray(items)) throw unknownShape()
-  return items.map(r => ({
-    id: r?.id == null ? undefined : Number(r.id),
-    postId: str(r?.post_id),
-    platform: platformName(str(r?.platform)),
-    author: str(r?.author_username),
-    text: str(r?.post_text).trim(),
-    views: num(r?.views),
-    contentType: r?.content_type == null ? undefined : String(r.content_type),
-  }))
-}
-
-export function toPostDetail(parsed: unknown): PdPostDetail {
-  const r = (parsed ?? {}) as Record<string, unknown>
-  if (r.post_url === undefined && r.views === undefined) throw unknownShape()
+// The row postDetailSql reads. Engagement rate as PD defines it: likes, comments and shares per
+// view, 0 without views; a hidden like count (-1) counts as none.
+export function toPostDetail(rows: readonly Record<string, unknown>[]): PdPostDetail {
+  const r = rows[0]
+  if (!r) throw new Error('PD Intelligence has no such post in this dataset')
+  const views = num(r.views)
+  const engagements = Math.max(num(r.likes), 0) + Math.max(num(r.comments), 0) + Math.max(num(r.shares), 0)
   return {
-    views: num(r.views),
+    views,
     likes: num(r.likes),
     comments: num(r.comments),
     shares: num(r.shares),
-    engagementRate: num(r.engagement_rate),
+    engagementRate: views > 0 ? (engagements / views) * 100 : 0,
     postedAt: str(r.post_timestamp),
     url: str(r.post_url),
     contentType: str(r.content_type),

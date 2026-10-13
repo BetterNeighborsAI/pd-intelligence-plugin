@@ -23,7 +23,11 @@ import {
   SERIES_DAYS,
   startRequest,
   type SectionKey,
+  accountPostsSql,
   activitySql,
+  dayPostsSql,
+  postDetailSql,
+  SUMMARY_SQL,
   blockedMessage,
   dayKey,
   followersSql,
@@ -46,7 +50,6 @@ import {
   toFollowers,
   toGlance,
   toPostDetail,
-  toPosts,
   toSummary,
   toTopPosts,
   topPostsSql,
@@ -54,7 +57,7 @@ import {
 
 const CHOOSE_TOOL = 'mcp__pd-intel-code__choose_dataset'
 // Writes that remove data or widen who can see it: always put to the person.
-const CONFIRM_TOOL = /^mcp__.+__(delete_tag|delete_creators|share_document)$/
+const CONFIRM_TOOL = /^mcp__.+__(delete_tag|delete_creators|erase_account|share_document)$/
 // A connector can still be connecting when Claude Code has just started: how long /pd waits.
 const CONNECT_TRIES = 4
 const CONNECT_WAIT_MS = 1500
@@ -107,6 +110,11 @@ async function pdServer($: EngineInterface): Promise<string | undefined> {
   }
 }
 
+// The rows of one run_analytics_sql query, its load narrowed by `filters` (dates, platform).
+async function pdSql($: EngineInterface, datasetId: number, sql: string, filters: Record<string, unknown> = {}) {
+  return rowsOf(await callPd($, 'run_analytics_sql', { dataset_id: datasetId, sql, ...filters }))
+}
+
 // Calls a PD Intelligence tool for the panel itself (not the model's evidence).
 async function callPd($: EngineInterface, tool: string, args?: Record<string, unknown>): Promise<unknown> {
   const server = await pdServer($)
@@ -156,8 +164,11 @@ async function loadSnapshot($: EngineInterface, id: number, today: string, keys:
   const sql = async (text: string, dateFrom: string) =>
     rowsOf(await callPd($, 'run_analytics_sql', { dataset_id: id, sql: text, date_from: dateFrom }))
   const jobs: Record<SectionKey, () => Promise<unknown>> = {
-    glance: async () =>
-      toGlance(id, ((await callPd($, 'get_dashboard_stats', { dataset_id: id, comparison_days: GLANCE_DAYS })) ?? {}) as Record<string, unknown>),
+    glance: async () => {
+      // get_totals carries the period-over-period numbers under `deltas`.
+      const totals = (await callPd($, 'get_totals', { dataset_id: id, comparison_days: GLANCE_DAYS })) as { deltas?: Record<string, unknown> } | null
+      return toGlance(id, totals?.deltas ?? {})
+    },
     activity: async () => toActivity(await sql(activitySql(from), from), days),
     followers: async () => toFollowers(await sql(followersSql(from, today), lookback), days),
     topPosts: async () => toTopPosts(await sql(topPostsSql(weekFrom), weekFrom)),
@@ -224,13 +235,14 @@ async function ensureToday($: EngineInterface, id: number, force = false): Promi
   const mine = (s: PdToday | null): s is PdToday => !!s && s.datasetId === id
   let date = day
   const summary = await settle(async () => {
-    const s = toSummary(await callPd($, 'get_daily_summary', { dataset_id: id }))
+    const s = toSummary(await pdSql($, id, SUMMARY_SQL))
     date = s.date || day
     return s
   })
   await update($, today, s => (mine(s) ? { ...s, summary } : s))
   const posts = await settle(async () =>
-    toPosts(await callPd($, 'search_posts', { dataset_id: id, date_from: date, date_to: date, sort_by: 'views', sort_order: 'desc', page_size: 5 })),
+    // date_to is exclusive: the window is that one day.
+    toTopPosts(await pdSql($, id, dayPostsSql(), { date_from: date, date_to: dayKey(Date.parse(`${date}T00:00:00Z`) + DAY_MS) })),
   )
   await update($, today, s => (mine(s) ? { ...s, posts } : s))
   const done = await read($, today)
@@ -271,7 +283,7 @@ async function loadPost($: EngineInterface, post: PdTopPost): Promise<void> {
   const postId = post.id
   const datasetId = current.id
   await update($, postView, () => ({ datasetId, postId, detail: LOADING, comments: null }))
-  const detail = await settle(async () => toPostDetail(await callPd($, 'get_post_detail', { dataset_id: datasetId, post_id: postId })))
+  const detail = await settle(async () => toPostDetail(await pdSql($, datasetId, postDetailSql(postId))))
   await update($, postView, v => (v && v.postId === postId && v.datasetId === datasetId ? { ...v, detail } : v))
 }
 
@@ -302,9 +314,7 @@ async function loadAccount($: EngineInterface, ref: PdAccountRef): Promise<void>
   const stats = await settle(async () => toAccountStats(await callPd($, 'search_accounts', filter), ref))
   await update($, accountView, v => (mine(v) ? { ...v, stats } : v))
   const recent = await settle(async () =>
-    toPosts(await callPd($, 'search_posts', { ...filter, sort_by: 'post_timestamp', sort_order: 'desc' }))
-      .filter(p => p.platform === ref.platform && p.author.toLowerCase() === ref.username.toLowerCase())
-      .slice(0, 5),
+    toTopPosts(await pdSql($, datasetId, accountPostsSql(ref.username), { platform: filter.platform })),
   )
   await update($, accountView, v => (mine(v) ? { ...v, recent } : v))
 }
