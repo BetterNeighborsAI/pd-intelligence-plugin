@@ -1,18 +1,30 @@
-# PD Intelligence plugins for Claude
+# PD Intelligence plugins for Claude, ChatGPT and Codex
 
 Two plugins for working with [PD Intelligence](https://intel.publicdemocracy.io) social data:
 
-- **`pd-intelligence`** (skills, any Claude app): briefings, post and comment deep-dives,
+- **`pd-intelligence`** (skills for Claude, ChatGPT and Codex): briefings, post and comment deep-dives,
   creator analysis, news coverage, bulk pulls, tagging, and reports rendered as documents,
   interactive data stories, or decks.
 - **`pd-intel-code`** (**Claude Code only**): a `/pd` control panel for your datasets.
   See [below](#pd-intel-code-the-pd-panel-claude-code-only).
+- **`pd-intelligence-connector`** (ChatGPT desktop / Codex): the public OAuth MCP
+  connection, available through the OpenAI catalog.
 
-Both drive the PD Intelligence MCP connector, so you need a PD Intelligence
-account with the connector added to Claude. Set it up from the **Connections** page in
-PD Intelligence.
+You need your own PD Intelligence account and MCP connection. For Claude, set it
+up from the **Connections** page in PD Intelligence. For ChatGPT and Codex, follow
+the [public setup guide](chatgpt/README.md). Installing a plugin does not grant
+dataset access.
 
 ## Install
+
+**ChatGPT / Codex**
+
+Follow the [ChatGPT and Codex setup guide](chatgpt/README.md) for the public
+marketplace and OAuth connector. ChatGPT web uses **Add custom MCP server** with
+`https://mcp.publicdemocracy.io/mcp`; the bundled connector is desktop-only under
+OpenAI's current repository import rules. Each user signs in with their own PD
+Intelligence account. This is GitHub distribution; OpenAI public directory
+submission is still pending.
 
 **Claude Code**
 
@@ -60,8 +72,9 @@ so, allow the read-only PD Intelligence tools in your permission settings.
 ## Updates
 
 This repository is published automatically from our internal skills repo on each
-release. Please don't open pull requests against `plugins/` — send feedback to
-support@better-neighbors.ai instead.
+release, including ChatGPT package, icon and connection-setting updates. Please
+don't open pull requests against `plugins/`, `chatgpt/`, or the marketplace
+catalogs — send feedback to support@better-neighbors.ai instead.
 
 ## License
 
