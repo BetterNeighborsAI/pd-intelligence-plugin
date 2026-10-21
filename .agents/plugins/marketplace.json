@@ -1,0 +1,32 @@
+{
+  "name": "better-neighbors",
+  "interface": {
+    "displayName": "PD Intelligence"
+  },
+  "plugins": [
+    {
+      "name": "pd-intelligence",
+      "source": {
+        "source": "local",
+        "path": "./plugins/pd-intelligence"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "pd-intelligence-connector",
+      "source": {
+        "source": "local",
+        "path": "./chatgpt/pd-intelligence-connector"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

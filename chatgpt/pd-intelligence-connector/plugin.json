@@ -1,0 +1,25 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "pd-intelligence-connector",
+  "version": "2.63.0",
+  "description": "PD Intelligence Official plugin",
+  "author": {
+    "name": "Public Democracy"
+  },
+  "homepage": "https://intel.publicdemocracy.io",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "PD Intelligence",
+        "shortDescription": "Social media intelligence",
+        "longDescription": "PD Intelligence Official plugin",
+        "developerName": "Public Democracy",
+        "category": "Productivity",
+        "capabilities": [],
+        "websiteURL": "https://intel.publicdemocracy.io",
+        "logo": "./assets/icon.png",
+        "composerIcon": "./assets/icon.png"
+      }
+    }
+  }
+}
