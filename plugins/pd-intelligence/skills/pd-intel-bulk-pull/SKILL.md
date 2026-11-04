@@ -191,7 +191,7 @@ agent's memory, so a crash or context reset costs one partition — not the run.
     {
       "key": "2026-01",
       "date_from": "2026-01-01",
-      "date_to": "2026-02-01",
+      "date_to": "2026-01-31",
       "file": "posts_2026-01.ndjson",
       "status": "pending",
       "expected": null,
@@ -204,9 +204,11 @@ agent's memory, so a crash or context reset costs one partition — not the run.
 
 Every partition starts `pending`. `filters` and the ordering are recorded so
 the pull is reproducible and so a later run can tell whether a cache matches
-the question being asked. `run_analytics_sql` loads rows *before* `date_to`,
-so give each partition the next one's `date_from` as its `date_to`; the
-dedupe by id absorbs any overlap at the boundary.
+the question being asked. `run_analytics_sql` treats `date_from` and `date_to`
+as **inclusive** (Eastern Time days), so a partition's `date_to` is its last
+day and the next partition starts the day after. Two partitions that share a
+boundary day both count it in `expected`, and the reconciliation comes out
+over; the dedupe by id keeps the cache itself correct either way.
 
 ### 4. Pull each partition
 

@@ -33,11 +33,16 @@ breakdowns, and time-windowed metrics.
 
 ## Workflow
 
-1. **Rankings first**: `get_leaderboard` with `entity_type: "creators"` or
-   `"accounts"` answers top-N instantly. `mode: "needs_attention"` finds
-   underperformers on all three entity types — a 50-view floor, engagement
-   ascending, capped to `limit` — so read it top-down and trust it. It only
-   ranks creators that reported views, so call it a shortlist, not a census.
+1. **Rankings first**: `search_creators` / `search_accounts` with `sort_by`
+   (`total_views`, `engagement_rate`, `followers_count`, `last_post`, ...),
+   `sort_order`, and `start_date`/`end_date` to window the metrics. They rank
+   by any metric with the dashboard's account-math rules, and each row already
+   carries `avg_views_per_post` and `avg_likes_per_post`. `get_leaderboard`
+   has no date window, so use it for the post leaderboard and for
+   `mode: "needs_attention"`, which finds underperformers on all three entity
+   types — a 50-view floor, engagement ascending, capped to `limit` — so read
+   it top-down and trust it. It only ranks entities that reported views, so
+   call it a shortlist, not a census.
 2. **Find specific people**: `search_creators` — its keyword matches creator
    name, email, AND any linked account's username/display name, so searching
    a handle finds its owner. Filters include `tag_names`, plus
@@ -79,7 +84,13 @@ breakdowns, and time-windowed metrics.
    a bot-like share and `core_verdict` (`organic`/`orchestrated`/`too_few`),
    the words they use, and the posts that pulled them in. `list_superfans`
    pages the full list (`bot_like: "hide"` drops bot-like people). Both read
-   the full comment tables; do not rebuild them in SQL.
+   the full comment tables; do not rebuild them in SQL. `get_audience` also
+   returns a `ladder` (people by how many posts they commented on) and, where
+   personas exist, `top_roles` and `top_topics`: `list_superfans_by_persona`
+   (`role`, `topic_ids`) filters the superfans by them, and `get_shared_fandom`
+   lists where else they comment across the whole pool (both need the
+   `global_audience` entitlement). Overlap across several of the dataset's
+   accounts is `get_cross_account_commenters`, scoped by tag — not SQL.
 9. **Labels**: `list_tags` (filter `entity_type: "creator"` or `"account"`)
    shows the dataset's labeling scheme — useful for cohort/category cuts.
 
@@ -196,8 +207,9 @@ each such call**, naming the account and the consequence.
 ## Analysis standards
 
 - **Normalize before comparing**: raw views favor prolific posters and big
-  platforms. Use per-post averages (views ÷ `total_posts`) and
-  follower-relative measures, and say which you used.
+  platforms. Use the per-post averages the search tools return
+  (`avg_views_per_post`, `avg_likes_per_post`) and follower-relative
+  measures, and say which you used.
 - **Handle `engagement_rate` carefully — it is the main way creator rankings
   go wrong.** It is `(likes + comments + shares) * 100 / views`, forced to
   `0.0` whenever views are `0`. Threads and Bluesky never publish views,

@@ -142,7 +142,8 @@ Distribute puts it in PD Docs. Curation (`pd-intel-tagging`), bulk extraction
 | The stored daily brief (AI narrative), today's or any past day's | `run_analytics_sql` on `daily_summaries` |
 | Find/filter posts, one post by `id`, a day's top posts | `run_analytics_sql` — `posts` JOIN `post_metrics_latest`; keyword = `ILIKE` on `post_text`/`title` |
 | Corpus-level stats: totals, medians, percentiles, distributions, cohorts, custom joins | `run_analytics_sql` — read-only DuckDB SQL, **the main read surface**. See `references/analytics-sql.md` for the lookup patterns; pass windows as the `date_from`/`date_to`/`platform`/`tag_names` **arguments**, never as SQL `WHERE` clauses; name the text columns you need; aggregate in SQL (500-row result cap) |
-| Rankings (best / underperforming) | `get_leaderboard` (`entity_type`, `mode`) |
+| Top posts, or underperformers of any entity type | `get_leaderboard` (`entity_type`, `mode`) — no date window |
+| Creators or accounts ranked by a chosen metric, optionally for a period | `search_creators` / `search_accounts` with `sort_by`, `sort_order`, `start_date`/`end_date` |
 | Comment activity overview | `get_comment_summary` (dataset-wide or one post) |
 | Find/filter comments | `search_comments` (reads the full comment tables) |
 | Full reply thread of a comment | `search_comments(root_comment_id=…)` — root plus every reply, oldest first (see pitfall below) |
@@ -181,9 +182,11 @@ Distribute puts it in PD Docs. Curation (`pd-intel-tagging`), bulk extraction
   replies). Check `replies_count` on the root first; `search_comments` with
   `root_comment_id` pages the thread (max 100 a page), so read only the pages
   you need, or sort a post's comments by `likes` instead.
-- **Use leaderboard for rankings, search or SQL for filtering.**
-  `get_leaderboard` answers "top/worst N"; `search_accounts`/`search_creators`
-  and `run_analytics_sql` over `posts` answer "find things matching X". `mode="needs_attention"` finds
+- **Leaderboard for posts and underperformers, search for ranking people.**
+  `get_leaderboard` answers "top N posts" and "worst N" of anything, all time;
+  `search_accounts`/`search_creators` with `sort_by` rank accounts and
+  creators by any metric, windowed with `start_date`/`end_date`;
+  `run_analytics_sql` over `posts` answers "find things matching X". `mode="needs_attention"` finds
   underperformers, consistently across posts, accounts and creators: a
   50-view floor, engagement ascending, capped to `limit`. Its scope is
   entities that reported views, so it is not a complete census — say so rather

@@ -48,11 +48,13 @@ mandatory template — but never pad with unverified claims.
    pass by engagement rate computed in SQL over posts with views — see the
    navigation skill's `references/analytics-sql.md`. Cite `post_url`, author,
    and metrics.
-5. **Who's driving it**: `get_leaderboard` with `entity_type: "creators"`
-   (and `"accounts"` if useful). `mode: "needs_attention"` surfaces
-   underperformers worth flagging on any entity type — it applies a 50-view
-   floor and sorts engagement ascending, so it ranks only entities that
-   reported views.
+5. **Who's driving it**: `search_creators` (and `search_accounts` if useful)
+   with `start_date`/`end_date` set to the period and `sort_by: "total_views"`
+   — `get_leaderboard` has no date window, so its creator and account
+   rankings are all-time, not the period's. Use `get_leaderboard` with
+   `mode: "needs_attention"` for underperformers worth flagging on any entity
+   type — it applies a 50-view floor and sorts engagement ascending, so it
+   ranks only entities that reported views.
 6. **Audience reaction**: `get_comment_summary` with `date_from`/`date_to`.
    The `timeline` reveals spikes — name the dates and find what caused them
    (its `top_posts` section, or `run_analytics_sql` on posts with that day as

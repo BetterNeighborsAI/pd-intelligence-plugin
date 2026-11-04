@@ -38,7 +38,8 @@ a collision, silently applies the wrong tag.
 |---|---|
 | Create/edit/apply a **personal** tag (`scope_type: "user"`) | dataset access only |
 | Create/edit/apply a **dataset** tag (shared with the team) | the `tags_manage` capability |
-| Anything **global**, or editing someone else's tag | system admin |
+| Edit or delete a dataset tag someone else created | the `admin_tags` capability |
+| Anything **global**, or someone else's personal tag | system admin |
 
 You cannot read a user's capabilities from the tools. Attempt the call and
 report the refusal plainly — do not tell the user they lack permission before
