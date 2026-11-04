@@ -51,7 +51,7 @@ search tools.** There is no post search tool.
 Page by `id`, not by `OFFSET`:
 
 ```sql
-SELECT p.id, p.post_id, p.platform, p.content_type, p.author_username,
+SELECT p.id, p.platform_post_id, p.platform, p.content_type, p.author_username,
        p.account_id, p.post_timestamp, p.post_url, p.post_text,
        m.views, m.likes, m.comments, m.shares, m.saves
 FROM posts p
@@ -368,7 +368,8 @@ The rest of the discipline:
   discussion". Check `get_comment_summary`'s `platform_stats` before
   reporting an empty pull as silence.
 - **Two ids on posts.** Cache both, but `id` (internal) is the dedupe key
-  and the one other tools accept. `post_id` is the platform's native id.
+  and the one other tools accept. `platform_post_id` is the platform's native
+  id; there is no `post_id` column on `posts`, and naming one fails the query.
 - **Tag filters are scoped to the caller.** Tag ids resolve against the
   authenticated user's usable tags, so a cache built under one account may
   not reproduce under another. Record `tag_names` in the manifest, not just

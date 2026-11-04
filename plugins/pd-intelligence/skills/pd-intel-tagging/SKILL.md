@@ -60,6 +60,37 @@ which one you used either way.
 
 Names must be unique within their scope. Add a `description` when the tag's
 meaning isn't obvious from its name; future filtering depends on it.
+`parent_tag_id` (a tag from `list_tags`) makes a hand-made sub-tag for
+grouping only; the sub-tag takes its parent's visibility, so `scope_type`
+must match.
+
+## Smart tags — a description PD keeps applying
+
+When the user wants a label by *meaning* ("posts criticizing the Fed") rather
+than a list of ids, do not tag by hand. `create_smart_tag(dataset_id,
+description, level="post"|"comment"|"account", scope_type="user"|"dataset")`
+makes a tag that scores every item against the description and keeps tagging
+new ones. Two steps, every time: `confirm=false` (the default) returns a
+`review` of what would be created and writes nothing — show it to the user;
+`confirm=true` creates it only after they agree. It tags the last 7 days within
+about a minute, then new items as they arrive; older history is not tagged
+unless the user starts it from the tag's page. A shared (`"dataset"`) smart tag
+needs `tags_manage`; global smart tags do not exist.
+
+- `get_smart_tag_status(dataset_id, tag_id?)` — one word per tag: `building`,
+  `tagging`, `watching` (nothing matched yet), `too_broad` (suggest splitting),
+  `waiting` or `failed`, plus `tagged` counts and `bar` (the threshold).
+- `explain_smart_tag_item(dataset_id, tag_id, entity_type, entity_id)` — the
+  item's `score` against `bar`, the `result` and `why`. Use it to help the
+  user reword the description, then `update_smart_tag` (same
+  `confirm=false` review, then `confirm=true`; `paused`, `self_improving` and
+  `reset_votes` live there too; rename with `update_tag`).
+- `create_smart_subtags(dataset_id, tag_id)` — splits a tag into smart
+  sub-tags; with no `options`, the review call proposes a split. Create with
+  `confirm=true` and the agreed `options` only.
+
+Tagged items are read the usual way: `list_tags`, the tag filters on the
+search tools, and `run_analytics_sql` (`tag_ids`/`tag_names`).
 
 ## Applying tags — tag the parent, not the children
 
@@ -68,8 +99,8 @@ tag_entities(dataset_id, entity_type, entity_ids, tag_ids, mode="add")
 ```
 
 `entity_type` is `"post"`, `"account"`, `"creator"`, `"comment"` or
-`"commenter"`; all ids in one call must be the same type. `mode` is `"add"` or
-`"remove"`.
+`"commenter"`; all ids in one call must be the same type (1-1000 ids and
+1-200 tag ids per call). `mode` is `"add"` or `"remove"`.
 
 **This writes direct assignments only, but reads inherit down the chain
 creator → account → post.** So tagging one creator makes every one of their

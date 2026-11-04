@@ -82,7 +82,7 @@ cached, source, load_ms, query_ms}`.
 
 Read the exact list and columns from the tool description. The shape:
 
-- `posts` — one row per active post (`id`, `post_id`, `platform`,
+- `posts` — one row per active post (`id`, `platform_post_id`, `platform`,
   `content_type`, `title`, `post_text`, `post_url`, `author_username`,
   `post_timestamp`, `account_id`, `hashtags`, `mentions`, `language`,
   `created_at` = when PD captured it, …).
@@ -99,7 +99,7 @@ Read the exact list and columns from the tool description. The shape:
   (NULL = grandfathered), `ended_at` (NULL = still collecting). An account with
   an open period is being tracked.
 - `creators` — no contact fields; email, phone and notes are only in
-  `get_creator_detail`.
+  `search_creators(creator_id=…)`.
 - `comments`, `commenters` — no X/Twitter rows exist; comments are not
   collected there. `comments.created_at` is arrival time, `comment_timestamp`
   write time. A root comment has `root_comment_id` NULL; its replies carry the

@@ -19,14 +19,16 @@ quotes, counts, and ids — not vibes.
   X/Twitter, even though posts there show a `comments` count). Check
   `get_comment_summary`'s `platform_stats` for actual coverage, and say
   "comments aren't collected for this platform" instead of "no discussion".
-- Posts have two ids: internal `id` (use this) and platform `post_id`.
+- Posts have two ids: internal `id` (use this; it is the `post_id` the comment
+  tools take and return) and the platform's `platform_post_id` (the id in the
+  post URL, in the SQL `posts` table).
 
 ## Workflow
 
 1. **Locate the subject.** `run_analytics_sql` over `posts` JOIN
    `post_metrics_latest` (`ON post_metrics_latest.post_id = posts.id`), with
-   `post_text ILIKE '%keyword%'` (or `title`), `author_username`, or the
-   platform's `post_id`. Pass the window and platforms as the
+   `post_text ILIKE '%keyword%'` (or `title`), `author_username`, or
+   `platform_post_id` (the id from a post URL). Pass the window and platforms as the
    `date_from`/`date_to`/`platform` **arguments**, not a `WHERE`. For a topic,
    run a `count(*)` first — that's the conversation's size — then fetch the
    top rows by views with `post_text` named explicitly. Patterns: the
@@ -54,7 +56,18 @@ quotes, counts, and ids — not vibes.
    `total_comments`, and `search_comments` with the same `commenter_id` shows
    their history; `list_commenters` sorted by `total_comments` surfaces
    the dataset's loudest voices. Note `platforms_active` — cross-platform
-   commenters are notable amplifiers.
+   commenters are notable amplifiers. For one creator's or account's
+   repeat commenters, `get_audience` (`creator_id` or `account_id`, dates)
+   returns the superfans, a bot-like share and a `core_verdict`
+   (`organic` / `orchestrated` / `too_few`) in one call — use it before
+   calling a reaction coordinated.
+7. **What changed in the conversation**: `get_rising_terms` with the period
+   as `date_from`/`date_to` (tag and `platform` filters optional) compares
+   word and hashtag use against the previous period of the same length —
+   `rising` and `falling` terms with `comments_now`, `comments_before`,
+   `ratio` and two example comments each. It is computed in the warehouse,
+   so it beats keyword counts in SQL on a busy dataset. Read `note`: a range
+   ending in the last three days is still filling in.
 
 ## Analysis standards
 

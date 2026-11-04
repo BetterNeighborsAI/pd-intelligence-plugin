@@ -59,7 +59,12 @@ mandatory template — but never pad with unverified claims.
    the `date_from`/`date_to` window). Remember
    its `platform_stats` shows which platforms have collected comment text —
    comment text is not collected for X/Twitter, so silence there means "not
-   collected", not "no discussion".
+   collected", not "no discussion". Its `capture` block says, per platform,
+   what share of the platform's own comment count PD holds (comments are
+   collected once, about three days after the post): quote it when a count
+   here is compared with the number shown on the post. For what the
+   conversation is newly about, `get_rising_terms` with the same window
+   returns the terms rising and falling against the previous period.
 
 ## Analysis standards
 

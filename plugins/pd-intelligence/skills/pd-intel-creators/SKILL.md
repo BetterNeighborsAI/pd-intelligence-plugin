@@ -42,9 +42,19 @@ breakdowns, and time-windowed metrics.
    name, email, AND any linked account's username/display name, so searching
    a handle finds its owner. Filters include `tag_names`, plus
    `start_date`/`end_date` to window the metrics.
-3. **Profile**: `get_creator_detail` (id from results) adds program fields —
-   `cohort`, `management`, `is_org`, `state`/`country`, `notes`.
-4. **Break down by platform**: `search_accounts` with `creator_id` lists a
+3. **Profile**: `search_creators` with `creator_id` (id from results) returns
+   that one creator with the full profile — `phone`, `generation`, `cohort`,
+   `management`, `is_org`, `state`/`country`, `notes`, `w9_received`,
+   `nda_status`, `tags` — the contact fields the SQL `creators` table omits.
+4. **Up or down?** `get_creator_overview` (`creator_id`, or `account_id` for
+   one handle; optional `date_from`/`date_to`, default the last 30 days) is the
+   creator page's Overview: `trend.direction` (`up`/`down`/`steady`/`unknown`),
+   per-platform `views_per_post` and `engagements_per_post` by week,
+   `best_format`, `best_days`, and for a creator `totals` plus `rank` of
+   `rank_of` (say "of 100+" when `rank_of_is_floor` is true). It judges per
+   post inside the window, so a backfill cannot fake a rise. Reach for it
+   before hand-rolling two-window SQL.
+5. **Break down by platform**: `search_accounts` with `creator_id` lists a
    creator's handles with per-account stats (`followers_count`,
    `engagement_rate`, `active_days`, `last_post`). Account tag filters
    inherit from the parent creator. Each row also says whether the dataset is
@@ -55,16 +65,22 @@ breakdowns, and time-windowed metrics.
    history, query the `accounts` and `subscriptions` tables with
    `run_analytics_sql` (pattern in the navigation skill's
    `references/analytics-sql.md`).
-5. **Window comparisons**: `search_creators`/`search_accounts` accept
+6. **Window comparisons**: `search_creators`/`search_accounts` accept
    `start_date`/`end_date` (with no other filters they page through everyone)
-   — run two windows (e.g. this month vs last) to measure growth instead of
-   eyeballing lifetime totals.
-6. **Their content**: `run_analytics_sql` over `posts` JOIN
+   — run two windows (e.g. this month vs last) to compare a roster, when
+   `get_creator_overview` on one creator is not enough.
+7. **Their content**: `run_analytics_sql` over `posts` JOIN
    `post_metrics_latest`, filtered on `posts.account_id` (the account ids from
-   step 4), ordered by views — or by engagement rate computed over posts with
+   step 5), ordered by views — or by engagement rate computed over posts with
    views — shows what's working for them. Pass any window as the
    `date_from`/`date_to` arguments.
-7. **Labels**: `list_tags` (filter `entity_type: "creator"` or `"account"`)
+8. **Their audience**: `get_audience` (`creator_id` or `account_id`) gives
+   the superfans (people who commented on `min_posts` or more of their posts),
+   a bot-like share and `core_verdict` (`organic`/`orchestrated`/`too_few`),
+   the words they use, and the posts that pulled them in. `list_superfans`
+   pages the full list (`bot_like: "hide"` drops bot-like people). Both read
+   the full comment tables; do not rebuild them in SQL.
+9. **Labels**: `list_tags` (filter `entity_type: "creator"` or `"account"`)
    shows the dataset's labeling scheme — useful for cohort/category cuts.
 
 ## Managing the roster (write tools)
@@ -98,6 +114,24 @@ accounts, no posts, and no stats until you group accounts under it with
   Ids that are already deleted or belong to another dataset are **skipped
   silently**, so compare `deleted_count` against how many you asked for and
   report the difference instead of assuming it all worked.
+
+**More than a handful of creators or accounts: `start_batch_upload`**, not one
+`create_creator` / `add_account` per row. `start_batch_upload(dataset_id,
+kind="creators"|"accounts", rows)` takes the dashboard template's columns
+(creators: `first_name`, `email`, `is_org` required, plus
+`<platform>_url` / `<platform>_tracking_enabled`; accounts: one URL per row
+under `creator_id` or `creator_name`) and checks every profile in the
+background — a **paid** lookup per row, nothing saved yet. Poll
+`get_batch_upload(upload_id)` until `status` is `"ready"`, show the user the
+review (valid/invalid counts, slots needed, rows with errors), then
+`approve_batch_upload` **only after their go-ahead** — saving subscribes the
+valid accounts and starts paid collection — or `discard_batch_upload`.
+Needs `creators_manage` or `accounts_manage`.
+
+**Older posts for accounts already collected: `start_backfill`** (one
+platform per run, up to 100 accounts, `days` up to 120 or `posted_after` up to
+365 days back). A **paid** scrape that needs `backfills_run` — get the
+user's explicit yes first, then track it with `get_backfill(run_id)`.
 
 To label creators as a cohort or program rather than editing profiles one by
 one, use the tagging tools — see the `pd-intel-tagging` skill. A creator tag

@@ -15,7 +15,8 @@ accounts, posts, and documents.
 
 1. Call `list_datasets` first. Every dataset-scoped tool requires a
    `dataset_id` (integer `id` from the results). The exceptions are the
-   news and podcast tools, which are global — see their rows below.
+   news and podcast tools, which are global — see their rows below — and
+   the email tools, which start from `list_email_places` instead.
 2. Match the user's request to a dataset by name/description. If it's
    ambiguous which dataset they mean, ask — don't guess.
 3. Datasets can be empty or newly created. If a query returns nothing,
@@ -40,8 +41,9 @@ Dataset
   see which platforms a dataset actually carries — coverage grows over time
   and varies per dataset, so don't assume a fixed list. The one gotcha worth
   memorizing: the key is `x_twitter`, **not** `twitter`.
-- **Two kinds of ids on posts**: `id` (internal, use this with other tools)
-  and `post_id` (the platform's native id). Always pass the internal `id`.
+- **Two kinds of ids on posts**: `id` (internal — the `post_id` every other
+  tool accepts and returns) and `platform_post_id` (the platform's native id,
+  as in the post URL; never a join key). Always pass the internal `id`.
 
 ## Before any number goes in a report
 
@@ -105,7 +107,11 @@ no filters; `search_posts`, `get_post_detail`, `get_account_detail` and
 `get_daily_summary` → `run_analytics_sql`; `get_commenter_detail` →
 `list_commenters(commenter_id=)` + `search_comments(commenter_id=)`;
 `get_comment_thread` → `search_comments(root_comment_id=)`;
-`get_dashboard_stats` → `get_totals(comparison_days=)`. Paid-promotion fields
+`get_dashboard_stats` → `get_totals(comparison_days=)`; `get_creator_detail`
+→ `search_creators(creator_id=)`; `begin_document_upload` /
+`append_document_chunk` / `finish_document_upload` /
+`get_document_download_url` → `publish_document` and `read_document`, which
+take and return the whole body. Paid-promotion fields
 (`is_paid`, `amount_paid`, …) are no longer returned — PD records no payments.
 
 ## How these skills fit together
@@ -145,15 +151,22 @@ Distribute puts it in PD Docs. Curation (`pd-intel-tagging`), bulk extraction
 | Accounts with stats + subscription state | `search_accounts` (no filters = every account with posts, paged) |
 | One account's profile fields, full roster incl. zero-post accounts, tracking history | `run_analytics_sql` on `accounts` (+ `account_metrics_latest`, `subscriptions`) |
 | Creators with aggregate stats | `search_creators` (no filters = every creator, paged) |
-| One creator's profile (incl. contact fields) | `get_creator_detail` |
+| One creator's profile (incl. contact fields) | `search_creators(creator_id=…)` — the one item carries `phone`, `generation`, `state`, `notes`, `w9_received`, `nda_status`, `cohort`, `is_org`, `tags` |
+| Is a creator or account going up or down; best format and posting days | `get_creator_overview` (`creator_id` or `account_id`, optional dates/`platform`) — judged per post inside the window, so a backfill cannot fake a trend |
+| A creator's or account's superfans and what they talk about | `get_audience` (one call), `list_superfans` (the full list, paged), `list_superfans_by_persona` and `get_shared_fandom` (need the `global_audience` entitlement) |
+| What comments say more or less than the period before | `get_rising_terms` (`date_from`/`date_to`, tag and platform filters; computed in the warehouse) |
 | Available labels | `list_tags` |
 | Audience overlap between accounts | `get_cross_account_commenters` (reads the full table — do not reimplement in SQL) |
 | Create/edit/delete tags, tag entities in bulk | `create_tag`, `update_tag`, `delete_tag`, `tag_entities` — **writes**; see the `pd-intel-tagging` skill |
+| A tag that keeps applying a description (smart tag) | `create_smart_tag` (review with `confirm=false`, create with `confirm=true` after the user agrees), `get_smart_tag_status`, `explain_smart_tag_item`, `update_smart_tag`, `create_smart_subtags` — **writes**; see the `pd-intel-tagging` skill |
 | Add/edit/remove creators | `create_creator`, `update_creator`, `delete_creators` — **writes**, need `creators_manage`; see the `pd-intel-creators` skill |
+| Add many creators or accounts at once | `start_batch_upload` → `get_batch_upload` (poll until `ready`) → `approve_batch_upload` only after the user's go-ahead (**paid** lookups and collection); see the `pd-intel-creators` skill |
+| Pull older posts for tracked accounts | `start_backfill` (**paid**, needs `backfills_run`, one platform per run, get the user's go-ahead) and `get_backfill` to track it |
 | Add an account, group it under a creator, start/stop collection, erase it from the dataset | `add_account` (two-step, **paid**), `set_account_creator`, `set_collection`, `erase_account` (**irreversible**, OAuth only) — **writes**, need `accounts_manage`; `update_account` (pooled record, system admin). See the `pd-intel-creators` skill |
 | Add a missing post by URL | `add_post` (two-step, **paid** check) — **write**, needs `content_edit`; see the `pd-intel-creators` skill |
-| Find / re-read a document already published | `list_documents` (metadata, `query` substring match), `read_document` (body, paged), `get_document_download_url` (signed link for a shell fetch) — reads; drafts never appear |
-| Publish / share / audit a document | `publish_document`, `begin_document_upload` / `append_document_chunk` / `finish_document_upload` (large bodies), `share_document`, `get_document_sharing` — **writes**; see the `pd-intel-documents` skill |
+| Find / re-read a document already published | `list_documents` (metadata, `query` substring match), `read_document` (the full body), `list_folders` — reads; drafts never appear |
+| Publish / share / audit / file a document | `publish_document` (whole body, 5 MB cap), `share_document`, `get_document_sharing`, `create_folder`, `move_to_folder` — **writes**; see the `pd-intel-documents` skill |
+| Custom emails and broadcasts | `list_email_places` **first**, then `list_emails`, `get_email`, `create_email` (always saved Off), `preview_email`, `update_email` (`is_enabled: true` turns it On — show a preview and get a go-ahead first); `send_*` tools send for real — never without an explicit yes |
 | News coverage, media framing, headline trends | `get_news_briefing`, `list_news_dates`, `get_news_outlet`, `get_news_roundup`, `get_news_trend`, `get_news_word_cloud` — **no `dataset_id`**; global, need the `news` entitlement, may be absent from your tools entirely; see the `pd-intel-news` skill |
 | Podcast people, episodes, transcripts | `podiverse_search_people`, `podiverse_get_person_activity`, `podiverse_get_podcast_episodes`, `podiverse_get_episode_transcript` — **no `dataset_id`**; global, need the `Podiverse-MCP` entitlement, and are absent from your tool list entirely without it |
 
