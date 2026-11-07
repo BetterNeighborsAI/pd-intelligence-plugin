@@ -41,8 +41,10 @@ breakdowns, and time-windowed metrics.
    has no date window, so use it for the post leaderboard and for
    `mode: "needs_attention"`, which finds underperformers on all three entity
    types — a 50-view floor, engagement ascending, capped to `limit` — so read
-   it top-down and trust it. It only ranks entities that reported views, so
-   call it a shortlist, not a census.
+   it top-down. It covers all time, so dormant creators with one old post can
+   top it: check each row's `last_post` and `total_posts` and set aside the
+   dormant ones before calling anyone weak. It only ranks entities that
+   reported views, so call it a shortlist, not a census.
 2. **Find specific people**: `search_creators` — its keyword matches creator
    name, email, AND any linked account's username/display name, so searching
    a handle finds its owner. Filters include `tag_names`, plus
@@ -57,8 +59,11 @@ breakdowns, and time-windowed metrics.
    per-platform `views_per_post` and `engagements_per_post` by week,
    `best_format`, `best_days`, and for a creator `totals` plus `rank` of
    `rank_of` (say "of 100+" when `rank_of_is_floor` is true). It judges per
-   post inside the window, so a backfill cannot fake a rise. Reach for it
-   before hand-rolling two-window SQL.
+   post inside the window, so a backfill cannot fake a rise. A week marked
+   `maturing: true` is still collecting metrics, so do not read its drop as
+   real; a window whose recent weeks are all maturing can come back `unknown`
+   (end it a week earlier). A null `engagements_per_post` means not reported,
+   not zero. Reach for it before hand-rolling two-window SQL.
 5. **Break down by platform**: `search_accounts` with `creator_id` lists a
    creator's handles with per-account stats (`followers_count`,
    `engagement_rate`, `active_days`, `last_post`). Account tag filters
@@ -75,8 +80,10 @@ breakdowns, and time-windowed metrics.
    — run two windows (e.g. this month vs last) to compare a roster, when
    `get_creator_overview` on one creator is not enough.
 7. **Their content**: `run_analytics_sql` over `posts` JOIN
-   `post_metrics_latest`, filtered on `posts.account_id` (the account ids from
-   step 5), ordered by views — or by engagement rate computed over posts with
+   `post_metrics_latest`, with the account ids from step 5 passed as the
+   `account_ids` argument (not a `WHERE account_id` clause: the argument
+   narrows the load before the row cap, a WHERE only filters what survived
+   it), ordered by views — or by engagement rate computed over posts with
    views — shows what's working for them. Pass any window as the
    `date_from`/`date_to` arguments.
 8. **Their audience**: `get_audience` (`creator_id` or `account_id`) gives
@@ -87,9 +94,11 @@ breakdowns, and time-windowed metrics.
    the full comment tables; do not rebuild them in SQL. `get_audience` also
    returns a `ladder` (people by how many posts they commented on) and, where
    personas exist, `top_roles` and `top_topics`: `list_superfans_by_persona`
-   (`role`, `topic_ids`) filters the superfans by them, and `get_shared_fandom`
-   lists where else they comment across the whole pool (both need the
-   `global_audience` entitlement). Overlap across several of the dataset's
+   filters the superfans by them (`role` = a `top_roles` key, `topic_ids` =
+   comma-separated `top_topics` keys). `get_audience` also carries a short
+   `shared_fandom` preview; `get_shared_fandom` gives the full list of where
+   else they comment across the whole pool (both need the `global_audience`
+   entitlement). Overlap across several of the dataset's
    accounts is `get_cross_account_commenters`, scoped by tag — not SQL.
 9. **Labels**: `list_tags` (filter `entity_type: "creator"` or `"account"`)
    shows the dataset's labeling scheme — useful for cohort/category cuts.
