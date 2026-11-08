@@ -118,8 +118,10 @@ accounts, not a methodology gap — don't report it as a data error.
 least 50 views, and for posts at least 24 hours old — so content that never
 reported views can't tie at `engagement_rate` 0 and swamp the list, then sorts
 engagement **ascending** (with reach descending, so "had reach, nothing landed"
-outranks low-reach ties) and caps to `limit`. Read these top-down and trust
-them.
+outranks low-reach ties) and caps to `limit`. Read these top-down, after one
+check: the post list does not clamp hidden Instagram likes, so `likes: -1` rows
+sort first with a negative `engagement_rate`. They are not underperformers.
+Drop them, asking for a bigger `limit` (max 50) if needed.
 
 Two consequences worth stating in a report:
 

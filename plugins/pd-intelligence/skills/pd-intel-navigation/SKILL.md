@@ -40,7 +40,9 @@ Dataset
 - **Platform keys**: read the `platforms` map from `get_totals` to
   see which platforms a dataset actually carries — coverage grows over time
   and varies per dataset, so don't assume a fixed list. The one gotcha worth
-  memorizing: the key is `x_twitter`, **not** `twitter`.
+  memorizing: the key is `x_twitter`, **not** `twitter`. Filters too:
+  `platform: "twitter"` returns nothing, even where a tool's description uses
+  it as the example.
 - **Two kinds of ids on posts**: `id` (internal — the `post_id` every other
   tool accepts and returns) and `platform_post_id` (the platform's native id,
   as in the post URL; never a join key). Always pass the internal `id`.
@@ -81,7 +83,8 @@ and the queries that verify coverage in the actual dataset.
 
 Almost everything here is read-only. The write surface is small and worth
 recognizing before you call it: the tag tools, the creator tools, the account
-and post tools, and the document tools. Writes touch shared org data — confirm
+and post tools, batch uploads and backfills, the document tools, and the email
+and broadcast tools. Writes touch shared org data — confirm
 with the user before a bulk apply or any delete, and never write to explore
 what a tool does.
 
@@ -98,6 +101,12 @@ before each of these calls**, naming the account or post and the consequence:
   irreversible, and every past total changes. Pausing is `set_collection`.
 - `update_account` — edits the **pooled** record, so the change reaches every
   dataset that collects the account (system admin only).
+- `start_batch_upload` (**paid** lookups) and `approve_batch_upload` (starts
+  **paid** collection); `start_backfill` (a **paid** scrape).
+- `send_broadcast`, `retry_broadcast`, `send_email_edition` — real email that
+  cannot be recalled. `update_email(is_enabled=true)` starts scheduled sends.
+  `add_email_subscribers` needs `consent=true`, which only the user can vouch
+  for. `delete_email` and `remove_email_subscriber` are deletes.
 
 The account and post tools are covered in the `pd-intel-creators` skill.
 
@@ -138,10 +147,10 @@ Distribute puts it in PD Docs. Curation (`pd-intel-tagging`), bulk extraction
 |------|------|
 | See available datasets | `list_datasets` (always first) |
 | Headline counts (all time or a window) | `get_totals` (`date_from`/`date_to`) |
-| KPIs with period-over-period deltas | `get_totals` with `comparison_days` → `deltas` (`{value, delta, delta_label}` per metric, plus per platform) |
+| KPIs with period-over-period deltas | `get_totals` with `comparison_days` → `deltas` (`{value, delta, delta_label}` per metric, plus per platform). For the creator headcount quote `dataset.total_creators`; `deltas.total_creators.value` can be lower |
 | The stored daily brief (AI narrative), today's or any past day's | `run_analytics_sql` on `daily_summaries` |
 | Find/filter posts, one post by `id`, a day's top posts | `run_analytics_sql` — `posts` JOIN `post_metrics_latest`; keyword = `ILIKE` on `post_text`/`title` |
-| Corpus-level stats: totals, medians, percentiles, distributions, cohorts, custom joins | `run_analytics_sql` — read-only DuckDB SQL, **the main read surface**. See `references/analytics-sql.md` for the lookup patterns; pass windows as the `date_from`/`date_to`/`platform`/`tag_names` **arguments**, never as SQL `WHERE` clauses; name the text columns you need; aggregate in SQL (500-row result cap) |
+| Corpus-level stats: totals, medians, percentiles, distributions, cohorts, custom joins | `run_analytics_sql` — read-only DuckDB SQL, **the main read surface**. See `references/analytics-sql.md` for the lookup patterns; pass windows as the `date_from`/`date_to`/`platform`/`tag_names`/`account_ids` **arguments**, never as SQL `WHERE` clauses; name the text columns you need; aggregate in SQL (500-row result cap) |
 | Top posts, or underperformers of any entity type | `get_leaderboard` (`entity_type`, `mode`) — no date window |
 | Creators or accounts ranked by a chosen metric, optionally for a period | `search_creators` / `search_accounts` with `sort_by`, `sort_order`, `start_date`/`end_date` |
 | Comment activity overview | `get_comment_summary` (dataset-wide or one post) |
@@ -167,7 +176,8 @@ Distribute puts it in PD Docs. Curation (`pd-intel-tagging`), bulk extraction
 | Add a missing post by URL | `add_post` (two-step, **paid** check) — **write**, needs `content_edit`; see the `pd-intel-creators` skill |
 | Find / re-read a document already published | `list_documents` (metadata, `query` substring match), `read_document` (the full body), `list_folders` — reads; drafts never appear |
 | Publish / share / audit / file a document | `publish_document` (whole body, 5 MB cap), `share_document`, `get_document_sharing`, `create_folder`, `move_to_folder` — **writes**; see the `pd-intel-documents` skill |
-| Custom emails and broadcasts | `list_email_places` **first**, then `list_emails`, `get_email`, `create_email` (always saved Off), `preview_email`, `update_email` (`is_enabled: true` turns it On — show a preview and get a go-ahead first); `send_*` tools send for real — never without an explicit yes |
+| Custom emails | `list_email_places` **first**, then `list_emails`, `get_email`, `create_email` (always saved Off), `preview_email` (runs the AI writer, 2 per minute), `update_email` (`is_enabled: true` turns it On — show a preview and get a go-ahead first); organization emails also use `get_org_email_context`, `list_email_editions`, `get_email_edition`, `send_email_edition` (OAuth only). `send_*` tools send for real — never without an explicit yes |
+| Broadcasts to PD users (no `list_email_places` step) | `create_broadcast_draft`, open `preview_url`, `send_broadcast_test`, then `send_broadcast` with `expected_recipients` = the draft's `reach` from `list_broadcasts`, only after an explicit yes; `list_broadcast_recipients` before `retry_broadcast` |
 | News coverage, media framing, headline trends | `get_news_briefing`, `list_news_dates`, `get_news_outlet`, `get_news_roundup`, `get_news_trend`, `get_news_word_cloud` — **no `dataset_id`**; global, need the `news` entitlement, may be absent from your tools entirely; see the `pd-intel-news` skill |
 | Podcast people, episodes, transcripts | `podiverse_search_people`, `podiverse_get_person_activity`, `podiverse_get_podcast_episodes`, `podiverse_get_episode_transcript` — **no `dataset_id`**; global, need the `Podiverse-MCP` entitlement, and are absent from your tool list entirely without it |
 
@@ -190,7 +200,9 @@ Distribute puts it in PD Docs. Curation (`pd-intel-tagging`), bulk extraction
   underperformers, consistently across posts, accounts and creators: a
   50-view floor, engagement ascending, capped to `limit`. Its scope is
   entities that reported views, so it is not a complete census — say so rather
-  than implying nothing else underperformed.
+  than implying nothing else underperformed. On posts, hidden Instagram likes
+  (`likes: -1`) sort first with a negative `engagement_rate`: drop those rows
+  and ask for a bigger `limit` (max 50).
 - **Report totals, not page counts.** Search tools paginate (default 25,
   max 100 per page) and return `total` — cite the total, and page through
   only when you actually need more items. In SQL, count with `count(*)` rather

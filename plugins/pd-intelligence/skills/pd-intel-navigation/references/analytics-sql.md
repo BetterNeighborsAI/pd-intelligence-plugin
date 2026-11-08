@@ -27,14 +27,17 @@ returns an empty or badly understated answer.
 
 | Narrowing | Wrong (inside `sql`) | Right (as an argument) |
 |---|---|---|
-| Date window | `WHERE post_timestamp >= '2026-07-01'` | `date_from: "2026-07-01"`, `date_to: "2026-08-01"` |
+| Date window | `WHERE post_timestamp >= '2026-07-01'` | `date_from: "2026-07-01"`, `date_to: "2026-07-31"` (both inclusive) |
 | Platform | `WHERE platform = 'tiktok'` | `platform: "tiktok"`, or several: `platform: "tiktok,instagram"` |
 | Tags | joining and filtering `entity_tags` by name | `tag_names: "Launch,Recap"` |
+| One account's history | `WHERE p.account_id = 310` | `account_ids: "310"` (or `"310,582"`) |
 
 The window applies to the tables that grow without bound — `posts`
 (`post_timestamp`), `post_metrics` and `account_metrics` (`created_at`),
 `comments` (`comment_timestamp`), with `comment_metrics_latest` following the
-comments window. The one-row-per-entity tables load whole.
+comments window. The one-row-per-entity tables load whole. `account_ids`
+narrows posts, metrics, follower snapshots, comments, commenters, creators and
+subscriptions, but `entity_tags` still loads whole, so name it only when needed.
 
 **`date_basis: "collected"`** windows `posts` and `comments` on `created_at`
 (when PD captured them) instead of when they were published or written. Use it
@@ -166,8 +169,9 @@ ORDER BY m.views DESC NULLS LAST
 LIMIT 25
 ```
 
-To find an account's or a creator's posts, filter on `p.account_id` (ids from
-`search_accounts`) rather than matching the username in the text.
+To find an account's or a creator's posts, pass their ids as `account_ids`
+(from `search_accounts`) rather than matching the username in the text. A
+`WHERE p.account_id` clause only sees rows that survived the load cap.
 
 **A day's (or a period's) top posts** — pass the window as arguments. Both
 ends are **inclusive**, so one day is `date_from: "2026-07-14"`,
