@@ -50,7 +50,7 @@ implying the result came from PD.
 | Which outlets and ecosystems are monitored | `get_news_outlet()` with no `slug` |
 | What one outlet put on its front page, and how | `get_news_outlet(slug, briefing_date?)` |
 | The week in review | `get_news_roundup()` — no arguments, latest week only |
-| What's rising in headlines, or how often a term appears day by day | `get_news_trend(terms?, days=14, briefing_date?, headlines="all")` |
+| What's rising in headlines, or how often a term appears day by day | `get_news_trend(terms?, days=14 (1–30), briefing_date?, headlines="all")` |
 | Which words a scope uses, or uses more than everyone else | `get_news_word_cloud(scope="all", method="frequency", days=1, briefing_date?, headlines="all")` |
 
 Every date argument is `YYYY-MM-DD` and optional — omit it for the latest
@@ -58,9 +58,11 @@ briefing, which is almost always what you want.
 
 ## Shared vocabulary
 
-- **Ecosystems.** Every news tool returns an `ecosystems` registry:
-  `[{id, label, short_label, color, emoji}]`. Read names from it — never
-  hardcode them — and use its `label` values in write-ups so your names match
+- **Ecosystems.** `get_news_briefing`, `get_news_roundup`, `get_news_trend`
+  and `get_news_outlet` with no `slug` return an `ecosystems` registry:
+  `[{id, label, short_label, color, emoji}]` (`list_news_dates`,
+  `get_news_word_cloud` and `get_news_outlet` with a `slug` do not). Read
+  names from it — never hardcode them — and use its `label` values in write-ups so your names match
   the product's. The `id`s are what `coverage`, `by_ecosystem` and
   `ecosystem_breakdown` are keyed on, and what `scope` accepts.
 - **Outlets.** Get slugs from `get_news_outlet` with no `slug`; it returns
@@ -191,8 +193,10 @@ words: [{text, weight}]}`.
    an outlet's `marginalized_or_absent_topics` are all data. Say explicitly
    which side left it out. `gaps_and_overlaps` is the pipeline's own analysis —
    use it, attributed as the briefing's observation.
-4. **The week in review** — `get_news_roundup` for the latest week; for any
-   other week, assemble it from daily briefings.
+4. **The week in review** — `get_news_roundup` for the latest week, and state
+   its `period_start`–`period_end`: the latest roundup can end days before the
+   newest briefing. If the user means the last seven days and `period_end` is
+   older, or wants any other week, assemble it from daily briefings.
 5. **"What's trending?"** — `get_news_trend` in discovery mode, then confirm
    the top terms against the actual headlines before presenting them.
 6. **News vs social** — the news tools and the social data do not join, so
@@ -205,7 +209,8 @@ words: [{text, weight}]}`.
 
    Say that the connection is your inference from timing, not a relationship
    in the data. Headline matching is whole-word; `ILIKE` is substring, so the
-   two counts are not measured identically.
+   two counts are not measured identically. Posts with no `post_text` (common
+   on Instagram and TikTok) cannot match, so the social count is a floor.
 
 ## Dates, and `available: false`
 
@@ -213,11 +218,11 @@ words: [{text, weight}]}`.
   day. Coverage has gaps, so a requested date may simply have no briefing.
 - **Date validation is inconsistent across the tools.** `get_news_briefing`
   and `get_news_outlet` answer a malformed or missing date with a quiet
-  `available: false`. **`get_news_trend` does worse**: given a malformed date
-  it returns `available: true`, echoes the bad string back in `dates`, and
-  reports zero for everything — a silent wrong answer. Always send
-  `YYYY-MM-DD`, and check that `dates` holds real dates and `total_headlines`
-  is not all zeros before quoting a trend.
+  `available: false`. **`get_news_trend` does worse**: given a malformed
+  `briefing_date` it returns `available: true` for the *latest* days, ignoring
+  the date, and it silently caps `days` above 30 at 30 — a real answer for the
+  wrong window. Always send `YYYY-MM-DD`, and check that `dates` is the window
+  you asked for before quoting a trend.
 - When a date comes back unavailable, check `list_news_dates` and report the
   nearest dates that do exist.
 

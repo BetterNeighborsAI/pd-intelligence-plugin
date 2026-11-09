@@ -107,6 +107,8 @@ before each of these calls**, naming the account or post and the consequence:
   cannot be recalled. `update_email(is_enabled=true)` starts scheduled sends.
   `add_email_subscribers` needs `consent=true`, which only the user can vouch
   for. `delete_email` and `remove_email_subscriber` are deletes.
+  `send_email_test` emails you and any `also_send_to` addresses, and
+  `discard_email_edition` throws away a waiting edition for good.
 
 The account and post tools are covered in the `pd-intel-creators` skill.
 
