@@ -77,6 +77,12 @@ it into the spine, whatever format you are about to render.
 - **Label the grain on every rate**, and **state the denominator** behind every
   "most", "many", or "typical".
 - **Cite the source URL** for every claim about a specific post.
+- **Check where each delta came from.** `get_totals` `deltas` always compare
+  the last `comparison_days` ending today, whatever `date_from`/`date_to` say,
+  and each `value` is the dataset's all-time total, not the period's count. For
+  a past period (last week, last month), take the KPI from the windowed
+  top-level fields and get the comparison from a second `get_totals` call on
+  the prior window of the same length.
 
 ## Fourth: render
 
@@ -127,12 +133,15 @@ Offer it every time — an artifact sitting in a local file is not delivered.
 
 1. `publish_document` with `mime_type: "text/html"` for a rendered document or
    deck (`text/markdown` for a plain writeup), the dataset it covers as
-   `dataset_id` for provenance, and a one-line `description` naming the period
-   and audience. Mind the 5 MB body cap. The body goes through
+   `dataset_id` for provenance (it needs `documents_manage` on that dataset; if
+   the call is refused for it, publish without `dataset_id`), and a one-line
+   `description` naming the period and audience. Mind the 5 MB body cap. The body goes through
    `publish_document` whole — there is no upload flow — so every byte of a
    rendered deck is a token you write out; keep embedded assets small.
-2. **Keep the returned `id`.** Re-rendering later updates the same document via
-   `document_id`; publishing the same title again just creates a duplicate.
+2. **Keep the returned `id` and `version`.** Re-rendering later updates the same
+   document via `document_id`, with `expected_version` set to the `version`
+   you last saw so a teammate's newer save is refused rather than overwritten;
+   publishing the same title again just creates a duplicate.
 3. Ask who should see it, then `share_document`.
 4. Hand back the right link — `reader_url` for named recipients, `public_url`
    for a public share.

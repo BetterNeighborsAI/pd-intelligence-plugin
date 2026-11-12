@@ -37,7 +37,9 @@ faster than this skill does, and inside the sandbox a wrong URL fails silently.
 **Find a version that is already working, rather than guessing one.** PD Docs is
 full of documents rendering under this exact sandbox right now — so read one:
 `list_documents` finds the published HTML, `read_document` shows its import map
-and script tags. A version live in a PD Docs document is proof, not a guess.
+and script tags. Pick a `mime_type: "text/html"` entry with a small
+`size_bytes` before reading: `read_document` returns the whole body, and
+published documents run from tens of KB to several MB. A version live in a PD Docs document is proof, not a guess.
 Fall back to picking the current release only if you find nothing.
 
 **D3** ships a UMD build that defines `window.d3`. Load it with a plain script

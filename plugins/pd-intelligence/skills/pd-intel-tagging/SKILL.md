@@ -130,14 +130,19 @@ rather than reporting a bigger change than happened.
 ### Bulk workflow
 
 1. Find the entities (`search_creators`, `search_accounts`, `search_comments`,
-   or `run_analytics_sql` for posts) and collect their internal `id`s. Use the
+   `list_commenters`, or `run_analytics_sql` for posts) and collect their
+   internal `id`s. `search_accounts` skips accounts with no posts; the SQL
+   `accounts` table has the full roster. Use the
    result `total` (or a `count(*)` in SQL) to know the real size of the set —
    not the page you fetched. SQL returns at most 500 rows per query, so fetch
    a large post set's ids in slices.
 2. **Show the user what you are about to tag and how many, and get a yes.**
    For a large or hard-to-review set, list a sample and the count.
 3. Call `tag_entities` in batches, then verify with `list_tags` (`usage_count`)
-   or a filtered search on the new tag.
+   or a filtered search on the new tag. `usage_count` counts direct
+   assignments only: tagging 3 creators adds 3, not their accounts and posts.
+   For inherited reach, count `entity_tags` rows in `run_analytics_sql`
+   (`is_direct` splits the two).
 
 ## Editing and removing
 
@@ -145,8 +150,9 @@ rather than reporting a bigger change than happened.
   Moving a tag between scopes needs permission in the **target** scope, so
   promoting a personal tag to a dataset tag needs `tags_manage`.
 - **`delete_tag` destroys the tag and every assignment of it, permanently.**
-  Confirm explicitly, and quote `usage_count` from `list_tags` so the user
-  knows how many assignments are about to disappear.
+  Confirm explicitly, and quote `usage_count` from `list_tags` (direct
+  assignments) plus the inherited reach from `entity_tags`, so the user knows
+  how much filtering disappears with it.
 - To take a tag off some entities and keep the tag, use
   `tag_entities(mode="remove")`. Reach for this first — it is the reversible
   option, and it is usually what "remove the tag from these" actually means.

@@ -37,7 +37,10 @@ breakdowns, and time-windowed metrics.
    (`total_views`, `engagement_rate`, `followers_count`, `last_post`, ...),
    `sort_order`, and `start_date`/`end_date` to window the metrics. They rank
    by any metric with the dashboard's account-math rules, and each row already
-   carries `avg_views_per_post` and `avg_likes_per_post`. `get_leaderboard`
+   carries `avg_views_per_post` and `avg_likes_per_post`. With a window, each
+   post counts at its last daily snapshot on or before `end_date`, so posts
+   from the window's final day or two read low; for current numbers use
+   `run_analytics_sql` on `post_metrics_latest`. `get_leaderboard`
    has no date window, so use it for the post leaderboard and for
    `mode: "needs_attention"`, which finds underperformers on all three entity
    types — a 50-view floor, engagement ascending, capped to `limit` — so read

@@ -34,6 +34,10 @@ mandatory template — but never pad with unverified claims.
 2. **KPIs**: `get_totals` with that `comparison_days`. Its `deltas`
    (`{value, delta, delta_label}` per metric) are your "what changed"
    backbone — including the per-platform post counts under `platforms`.
+   They always cover the last N days ending today, independent of
+   `date_from`/`date_to`, and each `value` is the all-time total, not the
+   period's count. For a period that ended before today, compare two windowed
+   `get_totals` calls (the period and the one before it) instead.
 3. **Narrative**: the stored daily brief is the `daily_summaries` table in
    `run_analytics_sql` — `SELECT summary_date, narrative_text, top_posts,
    top_creators, top_accounts FROM daily_summaries ORDER BY summary_date DESC
@@ -51,7 +55,13 @@ mandatory template — but never pad with unverified claims.
 5. **Who's driving it**: `search_creators` (and `search_accounts` if useful)
    with `start_date`/`end_date` set to the period and `sort_by: "total_views"`
    — `get_leaderboard` has no date window, so its creator and account
-   rankings are all-time, not the period's. Use `get_leaderboard` with
+   rankings are all-time, not the period's. The windowed numbers are each
+   post's views as of the last daily snapshot on or before `end_date`, so a
+   post from the last day or two counts little or nothing yet. When the
+   period runs up to today, quote current views from step 4's SQL
+   (`post_metrics_latest`, grouped by account or creator) and use the search
+   tools for the ranking only. To say whether a named top creator is rising
+   or falling, add `get_creator_overview`. Use `get_leaderboard` with
    `mode: "needs_attention"` for underperformers worth flagging on any entity
    type — it applies a 50-view floor and sorts engagement ascending, so it
    ranks only entities that reported views.
