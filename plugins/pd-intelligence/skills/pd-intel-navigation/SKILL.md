@@ -46,6 +46,8 @@ Dataset
 - **Two kinds of ids on posts**: `id` (internal — the `post_id` every other
   tool accepts and returns) and `platform_post_id` (the platform's native id,
   as in the post URL; never a join key). Always pass the internal `id`.
+  Exception: `get_leaderboard` post rows carry `post_id` = the platform's
+  id; take their `id` for other tools.
 
 ## Before any number goes in a report
 

@@ -65,8 +65,10 @@ LIMIT 500
   returned**. Long `post_text` hits the character cap before 500 rows, so a
   page can come back short — `notes` says so — and keyset paging just carries
   on from where it stopped. Stop when a page returns no rows.
-- The partition's window, platforms and tags go in the `date_from` /
-  `date_to` / `platform` / `tag_names` **arguments**, never in the `WHERE`.
+- The partition's window, platforms, tags and accounts go in the `date_from` /
+  `date_to` / `platform` / `tag_names` / `account_ids` **arguments**, never in
+  the `WHERE`. An account partition is `account_ids: "310"`, not
+  `WHERE p.account_id = 310`, which only filters whatever survived the load.
   A keyword filter (`p.post_text ILIKE '%term%'`) can join the `WHERE`.
 - Name every column; text columns (`post_text`, `title`, `hashtags`,
   `mentions`, `media_urls`) load only when named, so leave out the ones you
@@ -85,6 +87,12 @@ LIMIT 500
 
 The search tools are offset-paginated (`page`, `page_size` max 100) and
 return `{items, total, page, page_size, total_pages}`.
+
+`search_comments` has no account filter (only `post_id`, `commenter_id`,
+tags, platform and dates). For comments scoped to accounts, keyset-page the
+SQL `comments` table instead (`WHERE c.id > LAST_ID ORDER BY c.id LIMIT 500`)
+with `account_ids` and the partition's window as arguments, and read `notes`
+for truncation as for posts.
 
 `search_comments` orders deterministically: it applies an `id` tie-break, so
 rows that tie on the sort column (thousands of comments at `likes = 0`) come
