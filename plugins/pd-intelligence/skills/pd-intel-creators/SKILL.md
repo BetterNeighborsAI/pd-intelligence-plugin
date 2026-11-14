@@ -1,6 +1,6 @@
 ---
 name: pd-intel-creators
-description: Use when analyzing, comparing, or managing creators or accounts in PD Intelligence data — rankings, top performers, underperformers, follower growth, cross-platform presence, cohort or program tracking, "how is creator X doing", building creator shortlists, and also roster upkeep: adding a creator, editing a creator's profile or cohort, removing creators from a dataset, adding or tracking an account, linking an account to a creator, starting, stopping or pausing collection for an account, erasing an account from a dataset, correcting an account's record, or adding a missing post by URL.
+description: Use when analyzing, comparing, or managing creators or accounts in PD Intelligence data — rankings, top performers, underperformers, follower growth, cross-platform presence, cohort or program tracking, "how is creator X doing", building creator shortlists, and also roster upkeep: adding a creator, editing a creator's profile or cohort, removing creators from a dataset, adding or tracking an account, linking an account to a creator, marking or finding a creator's main channel, starting, stopping or pausing collection for an account, erasing an account from a dataset, correcting an account's record, or adding a missing post by URL.
 ---
 
 # PD Intelligence — Creator & Account Analysis
@@ -19,6 +19,13 @@ breakdowns, and time-windowed metrics.
   have several accounts across platforms (`accounts_count`,
   `platforms_count`); account metrics roll up to the creator. Commenters are
   the audience — a separate population entirely.
+- **Main channel.** Each creator has at most one per dataset: the account
+  their audience knows them by (the marked one, or their only account).
+  `search_creators` returns it as `main_channel_account_id` (null when a
+  creator with several accounts has none marked); `search_accounts` and the
+  SQL `accounts` table carry `is_main_channel`. Use it when the user names a
+  creator by a channel or asks for "their main channel". Main, not only: a
+  question about the creator still covers every account.
 - The platform key is `x_twitter`, not `twitter`. Read the `platforms` map
   from `get_totals` for what a dataset actually carries.
 - **Engagement metrics are not comparable across platforms as-is, and the
@@ -57,7 +64,9 @@ breakdowns, and time-windowed metrics.
    `management`, `is_org`, `state`/`country`, `notes`, `w9_received`,
    `nda_status`, `tags` — the contact fields the SQL `creators` table omits.
 4. **Up or down?** `get_creator_overview` (`creator_id`, or `account_id` for
-   one handle; optional `date_from`/`date_to`, default the last 30 days) is the
+   one handle; optional `date_from`/`date_to`, default the last 30 days;
+   `platform`, one name or comma-separated, limits a creator to those
+   platforms' accounts) is the
    creator page's Overview: `trend.direction` (`up`/`down`/`steady`/`unknown`),
    per-platform `views_per_post` and `engagements_per_post` by week,
    `best_format`, `best_days`, and for a creator `totals` plus `rank` of
@@ -93,7 +102,9 @@ breakdowns, and time-windowed metrics.
    the superfans (people who commented on `min_posts` or more of their posts),
    a bot-like share and `core_verdict` (`organic`/`orchestrated`/`too_few`),
    the words they use, and the posts that pulled them in. `list_superfans`
-   pages the full list (`bot_like: "hide"` drops bot-like people). Both read
+   pages the full list (`bot_like: "hide"` drops bot-like people). All the
+   audience tools take the same `platform` filter as `get_creator_overview`
+   for "their TikTok audience" questions. Both read
    the full comment tables; do not rebuild them in SQL. `get_audience` also
    returns a `ladder` (people by how many posts they commented on) and, where
    personas exist, `top_roles` and `top_topics`: `list_superfans_by_persona`
@@ -149,7 +160,9 @@ background — a **paid** lookup per row, nothing saved yet. Poll
 review (valid/invalid counts, slots needed, rows with errors), then
 `approve_batch_upload` **only after their go-ahead** — saving subscribes the
 valid accounts and starts paid collection — or `discard_batch_upload`.
-Needs `creators_manage` or `accounts_manage`.
+Needs `creators_manage` or `accounts_manage`. A batch cannot mark a main
+channel: for creators with several accounts, call `set_main_channel` after
+approval.
 
 **Older posts for accounts already collected: `start_backfill`** (one
 platform per run, up to 100 accounts, `days` up to 120 or `posted_after` up to
@@ -181,13 +194,20 @@ each such call**, naming the account and the consequence.
   **starts paid collection** and, on an organization's own dataset, uses a
   subscription slot. `tracking_enabled=false` adds the account without
   collecting. `creator_id` groups it on the way in — and on an account the
-  dataset already tracks, a different `creator_id` moves it. Check
+  dataset already tracks, a different `creator_id` moves it and drops its
+  main-channel mark. Check
   `search_accounts` or the `accounts` table first: the account may already be
   in the dataset.
 - `set_account_creator(dataset_id, account_id, creator_id)` — groups an
   account under a creator of this dataset; `creator_id=null` ungroups it
-  (history intact). An account grouped under a different creator is refused —
-  ungroup first, then regroup.
+  (history intact) and drops its main-channel mark. An account grouped under
+  a different creator is refused — ungroup first, then regroup.
+- `set_main_channel(dataset_id, account_id, is_main_channel=true)` — marks
+  the account as its creator's main channel, moving the mark off whichever
+  account held it; `false` removes it. The account must be grouped under a
+  creator, and a creator-derived dataset refuses it. Confirm with the user
+  first, then read it back from `search_creators`
+  (`main_channel_account_id`).
 - `set_collection(dataset_id, tracking, account_ids=[…] | creator_id=…)` —
   pass exactly one of the two. `tracking=false` **pauses**: nothing is
   deleted, history stays, and a restart opens a fresh period (the gap stays a
