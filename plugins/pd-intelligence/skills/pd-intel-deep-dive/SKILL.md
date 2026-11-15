@@ -28,7 +28,10 @@ quotes, counts, and ids — not vibes.
 1. **Locate the subject.** `run_analytics_sql` over `posts` JOIN
    `post_metrics_latest` (`ON post_metrics_latest.post_id = posts.id`), with
    `post_text ILIKE '%keyword%'` (or `title`), `author_username`, or
-   `platform_post_id` (the id from a post URL). Pass the window and platforms as the
+   `platform_post_id` (the id from a post URL). `author_username` is the
+   post's byline: on a collab it can be the partner, not the tracked account.
+   For one tracked account's posts, pass its id as `account_ids` (from
+   `search_accounts` or the `accounts` table) instead. Pass the window and platforms as the
    `date_from`/`date_to`/`platform` **arguments**, not a `WHERE`. For a topic,
    run a `count(*)` first — that's the conversation's size — then fetch the
    top rows by views with `post_text` named explicitly. Patterns: the
@@ -39,7 +42,12 @@ quotes, counts, and ids — not vibes.
    from ones inherited from the account or creator).
 3. **Reaction shape**: `get_comment_summary` with `post_id` for one post, or
    date-filtered for a topic/period. Gives volume, unique commenters,
-   author-reply rate, timeline, and the most-discussed posts.
+   author-reply rate, timeline, and the most-discussed posts. These count
+   the comments PD holds, which can be far fewer than the post's own
+   `comments` metric (collected once, about three days after the post).
+   Its `capture` block gives the share held per platform; state both numbers
+   and that share, and say how many held comments you read, before
+   generalizing.
 4. **Read actual comments**: `search_comments` with `post_id` (or `search`
    keywords), two passes:
    - `sort_by: "likes"` — what the audience endorses (top comments).
@@ -48,7 +56,8 @@ quotes, counts, and ids — not vibes.
    comments verbatim with their like counts.
 5. **Threads, carefully**: `search_comments` with `root_comment_id` returns
    the root plus every reply, oldest first — but a popular comment can have
-   hundreds of replies. Check `replies_count` first; only page through
+   hundreds of replies. Check `replies_count` first (`sort_by:
+   "replies_count"` lists the biggest threads); only page through
    threads that are small or genuinely pivotal. `is_author_reply: true` in `search_comments` finds
    where the creator engaged.
 6. **Who's driving it**: for recurring usernames, `list_commenters` with
@@ -60,7 +69,10 @@ quotes, counts, and ids — not vibes.
    repeat commenters, `get_audience` (`creator_id` or `account_id`, dates)
    returns the superfans, a bot-like share and a `core_verdict`
    (`organic` / `orchestrated` / `too_few`) in one call — use it before
-   calling a reaction coordinated.
+   calling a reaction coordinated. For voices that span several of the
+   dataset's accounts, `get_cross_account_commenters` (tag-scoped,
+   `min_accounts`, dates) finds them in one call instead of many
+   `search_comments` passes.
 7. **What changed in the conversation**: `get_rising_terms` with the period
    as `date_from`/`date_to` (tag and `platform` filters optional) compares
    word and hashtag use against the previous period of the same length —
