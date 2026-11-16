@@ -13,7 +13,7 @@ no PD Intelligence account. These tools cover the whole lifecycle:
 | Goal | Tool |
 |------|------|
 | Create a document / replace one you own | `publish_document` |
-| Change who can see a document you own | `share_document` |
+| Change who can see a document you own (or edit, while the owner lets Editors share) | `share_document` |
 | Check how any readable document is shared | `get_document_sharing` |
 | Find a document you can read | `list_documents` |
 | Read one document's body | `read_document` (the whole body, one call) |
@@ -68,6 +68,13 @@ people, as `role` `"viewer"` or `"editor"`), `is_global` (publish as a Guide
 for every platform member — system admins only), and `remove_dataset_ids` /
 `remove_organization_ids` / `remove_emails`.
 
+- Every facet needs the share right: the owner, or an Editor while the owner
+  has `editors_can_share` on. `visibility` stays owner-only and `is_global`
+  needs a system admin; both raise before anything changes when you lack them.
+- `emails` never takes the owner's or your own address. A guest asked for
+  `"editor"` lands as `"viewer"`; `email_share_roles` shows the role each
+  address actually got.
+
 - Grants are additive and idempotent; within one call the order is fixed —
   visibility, then grants, then removals last — so a grant+removal of the
   same target ends removed.
@@ -88,9 +95,10 @@ for every platform member — system admins only), and `remove_dataset_ids` /
   after the call**, not a diff — echo them back as confirmation.
 - Setting `visibility: "private"` kills the public link immediately; going
   public again mints a **new** URL, so previously circulated links stay dead.
-- Removals are never gated — pulling a document back is always allowed.
+- Removals take the same share right as grants and reach anyone's share,
+  peers included. A Viewer, or an Editor with sharing off, can remove nothing.
 - Calling `share_document` with only `document_id` changes nothing and
-  returns the current sharing state.
+  returns the current sharing state of a document you may share.
 
 **Sharing notifies people in the app.** A share is not a quiet database write:
 
@@ -121,10 +129,14 @@ recipient.
 
 `get_document_sharing(document_id)` works on any document you can read,
 including ones shared *with* you ("how was this shared with me?").
-When you're not the owner, `shared_with` comes back empty and `public_url`
-null even for public documents — that's redaction, not "unshared"; the
-audience is the owner's business. Which datasets a document reaches is
-visible to every reader. Unreachable documents return the same not-found as
+`my_role` ("owner" / "editor" / "viewer") and `is_owner` say where you stand.
+`public_url` is null for anyone but the owner, even on a public document.
+`shared_with` / `shared_with_roles` are filled for the owner and for an Editor
+who may share; for anyone else they come back empty. That is redaction, not
+"unshared". Datasets, organizations and `is_global` are visible to every
+reader. `folder` names the folder the document sits in and the people,
+datasets and organizations that folder passes down, so check it before saying
+who can read a document. Unreachable documents return the same not-found as
 nonexistent ones.
 
 Both `share_document` and `get_document_sharing` return **two** links, and they
@@ -152,11 +164,16 @@ moves each item on its own and reports `failures` per item; check them.
 
 - `list_documents(query?, limit?)` returns **metadata only** for everything you
   can read, most recently edited first — owned, shared with you, and shared to
-  a dataset you hold MCP access on. `query` is a case-insensitive substring
-  matched against title, slug and description; `limit` defaults to 50. Drafts
-  never appear.
+  a dataset you hold MCP access on. `query` is a full-text search over title,
+  description **and body** (English stemming, last word as a prefix); results
+  come best match first and each row carries a `snippet` of the matching
+  words. `limit` defaults to 50. Drafts never appear. Rows include
+  `folder_id`, `size_bytes` and `version` (the `expected_version` to pass
+  when you revise).
 - `read_document(document_id)` returns that metadata plus `content`, the
-  whole body as text, in one call. A saved link also carries `link`:
+  whole body as text, in one call. Check `size_bytes` from `list_documents`
+  first: bodies run up to several MB, and when the `snippet` already answers
+  the question, skip the read. A saved link also carries `link`:
   `{url, prompt}`.
 - The `id` comes back as a **string**, and timestamps use `Z` wire format.
 - A draft, a document you cannot reach, and an id that never existed all fail
