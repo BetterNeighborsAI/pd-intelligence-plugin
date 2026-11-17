@@ -56,8 +56,8 @@ This is where reports go wrong most often. Run this over every figure that made
 it into the spine, whatever format you are about to render.
 
 - **A zero is a fact about the platform, not a gap in the data.** Where a
-  platform does not publish a metric, PD Intelligence stores `0`. Threads and
-  Bluesky never publish view counts; Instagram publishes them on Reels only and
+  platform does not publish a metric, PD Intelligence stores `0`. Bluesky never
+  publishes view counts (Threads only from September 2026); Instagram publishes them on Reels only and
   publishes no share or save counts; comment text is not collected for
   X/Twitter.
 - **Never build a "limitations" or "what the data can't tell you" section out of
@@ -69,7 +69,7 @@ it into the spine, whatever format you are about to render.
   are not published. Aggregate `sum(engagements) / sum(views)` over posts that
   reported views, or compare on likes per post.
 - **Every cross-platform comparison needs a common metric.** With Instagram or
-  Threads in scope, likes per post is usually the only honest one. Label a views
+  Bluesky in scope, likes per post is usually the only honest one. Label a views
   chart as reach on the view-reporting subset.
 - **Report median alongside mean** wherever a few viral posts carry the period,
   and name those outliers separately. An outlier-skewed average presented as

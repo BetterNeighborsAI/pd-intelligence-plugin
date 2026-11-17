@@ -14,7 +14,8 @@ not publish one, the value is stored as **0** — not null, not "unknown". So a
 zero can mean any of three things, and you cannot tell them apart from the
 number alone:
 
-1. The platform never publishes that metric (Threads views, Instagram shares).
+1. The platform never publishes that metric (Bluesky views, Instagram shares),
+   or did not when the post was collected (Threads views before September 2026).
 2. The platform publishes it for some content types only (Instagram views exist
    on Reels, not on photos or carousels).
 3. The audience genuinely did nothing.
@@ -29,7 +30,7 @@ Each of these treats normal platform behavior as a data-quality problem:
 | Wrong | Right |
 |---|---|
 | "Instagram is missing views on a third of its posts." | "Instagram publishes view counts on Reels only; photos and carousels never carry them, so reach comparisons on Instagram use the Reels subset." |
-| "Threads has no view data at all." (under caveats/limitations) | "Threads does not publish view counts — no platform consumer can retrieve them. Threads is compared on likes and replies." |
+| "Bluesky has no view data at all." (under caveats/limitations) | "Bluesky does not publish view counts — no platform consumer can retrieve them. Bluesky is compared on likes and replies." |
 | "Facebook views are missing on 46% of posts." | "Facebook publishes view counts on some post types and not others. Reach figures for Facebook cover the posts that report views." |
 | "The data records neither shares nor saves for Instagram." | Say nothing, or note that Instagram share/save counts are not public, so engagement on Instagram is likes plus comments. |
 | A "What the data can't tell you" / "Limitations" section built out of these zeros. | A note on **method** — which metric was used per platform and why. |
@@ -56,7 +57,7 @@ actually carries.
 | X / Twitter | yes | yes | yes (replies) | yes (retweets) | yes (bookmarks) | yes |
 | Facebook | on some post types | yes | yes | yes | — | — |
 | Instagram | **Reels/video only** | yes | yes | **never public** | **never public** | — |
-| Threads | **never public** | yes | yes (replies) | yes (reposts) | — | yes |
+| Threads | yes from September 2026; older posts `0` | yes | yes (replies) | yes (reposts) | — | yes |
 | Bluesky | **never public** | yes | yes (replies) | yes (reposts) | — | — |
 
 Consequences worth stating out loud in a report's method note:
@@ -77,13 +78,13 @@ Consequences worth stating out loud in a report's method note:
 `engagement_rate = (likes + comments + shares) * 100 / views`, and it is
 **forced to `0.0` whenever views is 0.**
 
-So every Threads post, every Instagram photo, and every Facebook post without a
+So every Bluesky post, every Threads post from before September 2026, every Instagram photo, and every Facebook post without a
 published view count carries `engagement_rate: 0` — not null, not absent.
 
 This matters most for exactly the people a report judges hardest:
 
 - **Never average post-level `engagement_rate` yourself.** A creator who posts
-  on Threads gets a pile of hard zeros dragging the mean toward zero. They look
+  on Bluesky gets a pile of hard zeros dragging the mean toward zero. They look
   like the worst performer in the deck because of where they post, not how
   they perform.
 - If you need a rate over a set of posts, compute it as
@@ -130,14 +131,14 @@ Two consequences worth stating in a report:
   scope by construction, not by judgement.
 - Because the floor and the ascending sort are the tool's job, do not
   re-implement "worst N" by sorting `engagement_rate` yourself. That is the
-  path that surfaces Threads and Instagram photos instead of weak performers.
+  path that surfaces Bluesky and Instagram photos instead of weak performers.
 
 ## Cross-platform comparison rules
 
 1. **Never put TikTok views next to Instagram views without saying what each
    covers.** TikTok views are all posts; Instagram views are the Reels subset.
 2. **Pick a metric every compared platform actually publishes.** With Instagram
-   or Threads in scope, likes per post is usually the only honest common
+   or Bluesky in scope, likes per post is usually the only honest common
    denominator; views comparisons should be labeled as reach on the
    view-reporting subset.
 3. **State the denominator.** Before calling anything typical or broad, say how

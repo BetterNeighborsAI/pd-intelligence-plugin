@@ -30,8 +30,8 @@ breakdowns, and time-windowed metrics.
   from `get_totals` for what a dataset actually carries.
 - **Engagement metrics are not comparable across platforms as-is, and the
   default ways of ranking creators punish the wrong people.** Where a platform
-  does not publish a metric it is stored as `0` — Threads and Bluesky publish no
-  view counts, Instagram publishes them on Reels only. So never average
+  does not publish a metric it is stored as `0` — Bluesky publishes no view
+  counts (Threads only from September 2026), Instagram publishes them on Reels only. So never average
   post-level `engagement_rate` and never sort it ascending to find
   underperformers: you will surface Threads posts and Instagram photos, not weak
   creators. Aggregate `sum(engagements) / sum(views)` over posts that reported
@@ -244,7 +244,7 @@ each such call**, naming the account and the consequence.
   measures, and say which you used.
 - **Handle `engagement_rate` carefully — it is the main way creator rankings
   go wrong.** It is `(likes + comments + shares) * 100 / views`, forced to
-  `0.0` whenever views are `0`. Threads and Bluesky never publish views,
+  `0.0` whenever views are `0`. Bluesky never publishes views (Threads only from September 2026),
   Instagram publishes them on Reels only, and Facebook on some post types —
   so a creator working those surfaces collects hard zeros that have nothing to
   do with performance. Never average post-level rates and never sort them

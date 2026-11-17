@@ -94,7 +94,7 @@ Read the exact list and columns from the tool description. The shape:
 - `post_metrics` — every snapshot (time series; large). Only when you
   genuinely need history.
 - `accounts` — every active account in the dataset, including ones with no
-  posts yet (`id`, `creator_id`, `platform`, `username`, `display_name`,
+  posts yet (`id`, `creator_id`, `is_main_channel`, `platform`, `username`, `display_name`,
   `profile_url`, `verification_status`, `account_status`, `platform_user_id`,
   `notes`, …). `account_metrics_latest` / `account_metrics` hold follower and
   following counts.
@@ -187,7 +187,7 @@ ORDER BY m.views DESC
 LIMIT 10
 ```
 
-Rank no-view platforms (Threads, Bluesky, Instagram photos) separately by
+Rank no-view posts (Bluesky, Instagram photos, Threads before September 2026) separately by
 likes — see `metric-semantics.md`.
 
 **A comment thread** — prefer `search_comments(root_comment_id=ROOT_ID)`,

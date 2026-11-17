@@ -48,13 +48,20 @@ Dataset
   as in the post URL; never a join key). Always pass the internal `id`.
   Exception: `get_leaderboard` post rows carry `post_id` = the platform's
   id; take their `id` for other tools.
+- **Main channel**: each creator has at most one per dataset, the account
+  their audience knows them by (`main_channel_account_id` on
+  `search_creators`, `is_main_channel` on `search_accounts` and the SQL
+  `accounts` table). Use it when the user names a creator by a channel or asks
+  for their main channel; a question about the creator still covers every
+  account.
 
 ## Before any number goes in a report
 
 **A zero is a fact about the platform, not about the audience or our data.**
 Each platform publishes a different subset of metrics; where one is not
-published it is stored as `0`, not null. Threads and Bluesky never publish view
-counts; Instagram publishes them on Reels only, and publishes no share or save
+published it is stored as `0`, not null. Bluesky never publishes view counts;
+Threads reports them only on posts from September 2026 on (older Threads posts
+carry `0`); Instagram publishes them on Reels only, and publishes no share or save
 counts at all; comment text is not collected for X/Twitter.
 
 Never write these zeros up as missing data, a coverage gap, or a "what the data
@@ -176,7 +183,7 @@ Distribute puts it in PD Docs. Curation (`pd-intel-tagging`), bulk extraction
 | Add/edit/remove creators | `create_creator`, `update_creator`, `delete_creators` — **writes**, need `creators_manage`; see the `pd-intel-creators` skill |
 | Add many creators or accounts at once | `start_batch_upload` → `get_batch_upload` (poll until `ready`) → `approve_batch_upload` only after the user's go-ahead (**paid** lookups and collection); see the `pd-intel-creators` skill |
 | Pull older posts for tracked accounts | `start_backfill` (**paid**, needs `backfills_run`, one platform per run, get the user's go-ahead) and `get_backfill` to track it |
-| Add an account, group it under a creator, start/stop collection, erase it from the dataset | `add_account` (two-step, **paid**), `set_account_creator`, `set_collection`, `erase_account` (**irreversible**, OAuth only) — **writes**, need `accounts_manage`; `update_account` (pooled record, system admin). See the `pd-intel-creators` skill |
+| Add an account, group it under a creator, mark the main channel, start/stop collection, erase it from the dataset | `add_account` (two-step, **paid**), `set_account_creator`, `set_main_channel`, `set_collection`, `erase_account` (**irreversible**, OAuth only) — **writes**, need `accounts_manage`; `update_account` (pooled record, system admin). See the `pd-intel-creators` skill |
 | Add a missing post by URL | `add_post` (two-step, **paid** check) — **write**, needs `content_edit`; see the `pd-intel-creators` skill |
 | Find / re-read a document already published | `list_documents` (metadata, `query` full-text search over title, description and body), `read_document` (the full body), `list_folders` — reads; drafts never appear |
 | Publish / share / audit / file a document | `publish_document` (whole body, 5 MB cap), `share_document`, `get_document_sharing`, `create_folder`, `move_to_folder` — **writes**; see the `pd-intel-documents` skill |

@@ -96,7 +96,7 @@ quotes, counts, and ids — not vibes.
   you read a million comments.
 - **State the denominator** before calling a theme common: how many comments
   you read, and how many carried it.
-- **A missing metric is not a finding.** Threads publishes no view count and
+- **A missing metric is not a finding.** Bluesky publishes no view count and
   Instagram publishes none on photos or carousels, so a post's `0` views says
   nothing about how the post landed. Judge reach only on platforms that
   publish it, and never write a

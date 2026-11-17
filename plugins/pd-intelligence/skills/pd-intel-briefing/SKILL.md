@@ -20,8 +20,8 @@ mandatory template — but never pad with unverified claims.
 - The `platforms` map from `get_totals` shows which platforms the
   dataset actually carries. The key is `x_twitter`, not `twitter`.
 - **Before comparing platforms or quoting an engagement rate:** where a platform
-  does not publish a metric, PD Intelligence stores `0`, not null. Threads and
-  Bluesky never publish view counts; Instagram publishes them on Reels only and
+  does not publish a metric, PD Intelligence stores `0`, not null. Bluesky never
+  publishes view counts (Threads only from September 2026); Instagram publishes them on Reels only and
   publishes no share or save counts; comment text is not collected for
   X/Twitter. Those zeros are platform facts, never a data gap — and never
   average post-level `engagement_rate`, which is forced to `0.0` on every
