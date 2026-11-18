@@ -203,8 +203,12 @@ words: [{text, weight}]}`.
    line them up **by date**:
    1. `get_news_trend` with `terms` over the window — note the `dates`.
    2. `list_datasets`, then for the same terms and dates `run_analytics_sql`
-      on `posts` (`post_text ILIKE '%term%'`), grouped by day, with the window
-      passed as the `date_from`/`date_to` arguments.
+      on `posts` (`post_text ILIKE '%term%'`), with the window passed as the
+      `date_from`/`date_to` arguments. Group on the Eastern Time day,
+      `CAST(timezone('America/New_York', p.post_timestamp) AS DATE)`, not
+      `CAST(post_timestamp AS DATE)`: the window is ET days but
+      `post_timestamp` is UTC, so a plain cast moves evening posts to the
+      next day and adds a bucket past `date_to`, which can flip who led.
    3. Compare timing: did headlines lead posts, or the reverse?
 
    Say that the connection is your inference from timing, not a relationship

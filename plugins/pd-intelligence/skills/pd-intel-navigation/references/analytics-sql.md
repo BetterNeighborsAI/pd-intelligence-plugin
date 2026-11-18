@@ -176,7 +176,9 @@ To find an account's or a creator's posts, pass their ids as `account_ids`
 **A day's (or a period's) top posts** — pass the window as arguments. Both
 ends are **inclusive**, so one day is `date_from: "2026-07-14"`,
 `date_to: "2026-07-14"`. Days follow the dashboard's Eastern Time calendar, so
-a day's rows can carry UTC timestamps a few hours into the next date. Then:
+a day's rows can carry UTC timestamps a few hours into the next date. To bucket
+by day, group on `CAST(timezone('America/New_York', p.post_timestamp) AS DATE)`
+so the buckets match the window. Then:
 
 ```sql
 SELECT p.id, p.platform, p.author_username, p.post_url,
