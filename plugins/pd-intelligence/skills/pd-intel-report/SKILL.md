@@ -142,7 +142,11 @@ Offer it every time — an artifact sitting in a local file is not delivered.
    document via `document_id`, with `expected_version` set to the `version`
    you last saw so a teammate's newer save is refused rather than overwritten;
    publishing the same title again just creates a duplicate.
-3. Ask who should see it, then `share_document`.
+3. Ask who should see it, then `share_document`. Pass `visibility: "public"`
+   only when the user asked for a public link. Targets that fail (a dataset
+   without `documents_manage`, an invalid email) do not raise: read
+   `dataset_share_failures`, `organization_share_failures` and
+   `email_share_failures` and tell the user which ones did not land.
 4. Hand back the right link — `reader_url` for named recipients, `public_url`
    for a public share.
 
