@@ -49,7 +49,7 @@ asked for a shared one.
 ## Creating a tag
 
 ```
-create_tag(dataset_id, name, scope_type="user", color=None, description=None)
+create_tag(dataset_id, name, scope_type="user", color=None, description=None, parent_tag_id=None)
 ```
 
 **`scope_type` defaults to `"user"`, which is private to the caller.** This is
@@ -76,19 +76,29 @@ new ones. Two steps, every time: `confirm=false` (the default) returns a
 `confirm=true` creates it only after they agree. It tags the last 7 days within
 about a minute, then new items as they arrive; older history is not tagged
 unless the user starts it from the tag's page. A shared (`"dataset"`) smart tag
-needs `tags_manage`; global smart tags do not exist.
+needs `tags_manage`; global smart tags do not exist. Optional: `name` (PD
+names it from the description otherwise), `include_tag_ids` to score only
+items already carrying one of those tags ("search within"), and
+`exclude_tag_ids` to skip items carrying any of them.
+
+`list_tags` does not say which tags are smart. `get_smart_tag_status` with no
+`tag_id` lists every smart tag in the dataset; anything else is hand-made.
 
 - `get_smart_tag_status(dataset_id, tag_id?)` — one word per tag: `building`,
   `tagging`, `watching` (nothing matched yet), `too_broad` (suggest splitting),
   `waiting` or `failed`, plus `tagged` counts and `bar` (the threshold).
 - `explain_smart_tag_item(dataset_id, tag_id, entity_type, entity_id)` — the
-  item's `score` against `bar`, the `result` and `why`. Use it to help the
+  item's `score` against `bar`, the `result` and `why`. `score` is null when
+  PD has not re-read the item since the description changed (an earlier
+  version may still have tagged it); report `why` then. Use it to help the
   user reword the description, then `update_smart_tag` (same
   `confirm=false` review, then `confirm=true`; `paused`, `self_improving` and
   `reset_votes` live there too; rename with `update_tag`).
 - `create_smart_subtags(dataset_id, tag_id)` — splits a tag into smart
-  sub-tags; with no `options`, the review call proposes a split. Create with
-  `confirm=true` and the agreed `options` only.
+  sub-tags; with no `options`, the review call proposes a split. Pass
+  `pick_one=true` when the options are alternatives (supports / opposes) so
+  each item gets at most one. Create with `confirm=true` and the agreed
+  `options` only.
 
 Tagged items are read the usual way: `list_tags`, the tag filters on the
 search tools, and `run_analytics_sql` (`tag_ids`/`tag_names`).
@@ -104,8 +114,10 @@ tag_entities(dataset_id, entity_type, entity_ids, tag_ids, mode="add")
 1-200 tag ids per call). `mode` is `"add"` or `"remove"`.
 
 **This writes direct assignments only, but reads inherit down the chain
-creator → account → post.** So tagging one creator makes every one of their
-accounts and every post on those accounts match that tag in every tag-filtered read.
+creator → account → post → comment.** So tagging one creator makes every one of
+their accounts, every post on those accounts and every comment on those posts
+match that tag in every tag-filtered read. A post tag alone usually reaches far
+more comments than posts.
 
 Before tagging a large batch of posts, ask what the tag actually means:
 
@@ -142,7 +154,8 @@ rather than reporting a bigger change than happened.
    or a filtered search on the new tag. `usage_count` counts direct
    assignments only: tagging 3 creators adds 3, not their accounts and posts.
    For inherited reach, count `entity_tags` rows in `run_analytics_sql`
-   (`is_direct` splits the two).
+   grouped by `entity_type` (`is_direct` splits the two; inherited comment
+   rows are included).
 
 ## Editing and removing
 
