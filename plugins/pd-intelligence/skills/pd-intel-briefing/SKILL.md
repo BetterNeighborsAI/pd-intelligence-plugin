@@ -61,14 +61,21 @@ mandatory template — but never pad with unverified claims.
    period runs up to today, quote current views from step 4's SQL
    (`post_metrics_latest`, grouped by account or creator) and use the search
    tools for the ranking only. To say whether a named top creator is rising
-   or falling, add `get_creator_overview`. Use `get_leaderboard` with
+   or falling, add `get_creator_overview`. Weeks marked `maturing: true`
+   are still collecting metrics, so a window ending today often returns
+   `trend.direction: "unknown"`: say the trend is not settled yet (or end
+   the window a week earlier) rather than reading the maturing drop as
+   real. Use `get_leaderboard` with
    `mode: "needs_attention"` for underperformers worth flagging on any entity
    type — it applies a 50-view floor and sorts engagement ascending, so it
    ranks only entities that reported views.
 6. **Audience reaction**: `get_comment_summary` with `date_from`/`date_to`.
    The `timeline` reveals spikes — name the dates and find what caused them
    (its `top_posts` section, or `run_analytics_sql` on posts with that day as
-   the `date_from`/`date_to` window). Remember
+   the `date_from`/`date_to` window). Its last ~3 days are still filling in
+   (comments arrive about three days after they are written), so a drop there
+   is collection lag, not a quiet audience. `top_posts` carries `post_id`, not
+   `post_url`: look the URL up in `posts` by `id` before citing it. Remember
    its `platform_stats` shows which platforms have collected comment text —
    comment text is not collected for X/Twitter, so silence there means "not
    collected", not "no discussion". Its `capture` block says, per platform,
@@ -76,7 +83,8 @@ mandatory template — but never pad with unverified claims.
    collected once, about three days after the post): quote it when a count
    here is compared with the number shown on the post. For what the
    conversation is newly about, `get_rising_terms` with the same window
-   returns the terms rising and falling against the previous period.
+   returns the terms rising and falling against the previous period; read
+   its `note` when the window ends in the last three days.
 
 ## Analysis standards
 
