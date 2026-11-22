@@ -92,7 +92,11 @@ return `{items, total, page, page_size, total_pages}`.
 tags, platform and dates). For comments scoped to accounts, keyset-page the
 SQL `comments` table instead (`WHERE c.id > LAST_ID ORDER BY c.id LIMIT 500`)
 with `account_ids` and the partition's window as arguments, and read `notes`
-for truncation as for posts.
+for truncation as for posts. Join `comment_metrics_latest` for `likes` and
+`replies_count` (it follows the comments window), but leave `commenters` out
+of the page query: the date window does not narrow it, so every page would
+load the whole commenter table. Cache `commenter_id` and resolve names once
+at the end.
 
 `search_comments` orders deterministically: it applies an `id` tie-break, so
 rows that tie on the sort column (thousands of comments at `likes = 0`) come
@@ -102,8 +106,13 @@ back in a stable order. **Sort by whatever you need** — `comment_timestamp`,
 **`list_commenters` is the exception: it has no tie-break.** Sorting it by
 `total_comments`, where huge numbers of commenters tie at one comment each,
 gives an arbitrary order within each tie, so paging deep can skip and repeat
-rows. Sort it by `username` when you need a complete pass — ties there are rare
-rather than pervasive — dedupe by `id` regardless, and treat any shortfall against
+rows. Sorting by `username` does not fix it everywhere: Facebook commenters
+have no `username` (only `display_name`), so on Facebook every row ties. For a
+complete commenter pass, keyset-page the SQL `commenters` table instead
+(`WHERE u.id > LAST_ID ORDER BY u.id LIMIT 500`, `platform` as an argument),
+and use `list_commenters` only when you need `total_comments` or
+`platforms_active`. If you do page `list_commenters`, sort by `username` only
+off Facebook, dedupe by `id` regardless, and treat any shortfall against
 `total` as real rather than assuming the pages lined up.
 
 What ordering can't fix is that offsets are computed against a **live** table.
@@ -165,6 +174,14 @@ Date is the default because closed ranges are what make partitions stable
 and independently reproducible. If one partition still exceeds ~2,000 rows,
 split it finer (month → week → day). Never let a partition run past ~40
 pages.
+
+A day is the finest date grain (the date arguments take `YYYY-MM-DD`), and
+one busy day can hold several thousand comments, some on a single post. When
+a one-day comment partition still runs past ~40 pages of `search_comments`,
+split it by `platform`, then by `post_id` for the heaviest posts
+(`get_comment_summary` `top_posts` names them), or switch that partition to
+the SQL `comments` keyset query, which pages 500 rows at a time with no
+offsets.
 
 **Do not derive partition sizes by dividing the total by the number of
 months.** Volume is wildly non-uniform — a dataset that averages a few
