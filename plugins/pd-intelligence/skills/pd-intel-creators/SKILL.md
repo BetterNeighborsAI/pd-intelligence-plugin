@@ -41,8 +41,9 @@ breakdowns, and time-windowed metrics.
 ## Workflow
 
 1. **Rankings first**: `search_creators` / `search_accounts` with `sort_by`
-   (`total_views`, `engagement_rate`, `followers_count`, `last_post`, ...),
-   `sort_order`, and `start_date`/`end_date` to window the metrics. They rank
+   (`total_views`, `engagement_rate`, `last_post`, `avg_views_per_post`, ...;
+   followers sort as `total_followers` on creators, `followers_count` on
+   accounts, and the wrong name is refused), `sort_order`, and `start_date`/`end_date` to window the metrics. They rank
    by any metric with the dashboard's account-math rules, and each row already
    carries `avg_views_per_post` and `avg_likes_per_post`. With a window, each
    post counts at its last daily snapshot on or before `end_date`, so posts
@@ -74,7 +75,10 @@ breakdowns, and time-windowed metrics.
    post inside the window, so a backfill cannot fake a rise. A week marked
    `maturing: true` is still collecting metrics, so do not read its drop as
    real; a window whose recent weeks are all maturing can come back `unknown`
-   (end it a week earlier). A null `engagements_per_post` means not reported,
+   (end it a week earlier). A platform also reads `unknown` when its early
+   weeks have no posts, usually because the account was added mid-window:
+   start `date_from` after that account's `subscription_started_at` from
+   step 5 for a per-platform verdict. A null `engagements_per_post` means not reported,
    not zero. Reach for it before hand-rolling two-window SQL.
 5. **Break down by platform**: `search_accounts` with `creator_id` lists a
    creator's handles with per-account stats (`followers_count`,
@@ -102,7 +106,8 @@ breakdowns, and time-windowed metrics.
    the superfans (people who commented on `min_posts` or more of their posts),
    a bot-like share and `core_verdict` (`organic`/`orchestrated`/`too_few`),
    the words they use, and the posts that pulled them in. `list_superfans`
-   pages the full list (`bot_like: "hide"` drops bot-like people). All the
+   pages the full list (`bot_like: "hide"` drops bot-like people); each row
+   carries a `persona` (role, topics, summary) where one exists. All the
    audience tools take the same `platform` filter as `get_creator_overview`
    for "their TikTok audience" questions. Both read
    the full comment tables; do not rebuild them in SQL. `get_audience` also
