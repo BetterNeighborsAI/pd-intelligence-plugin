@@ -45,9 +45,12 @@ quotes, counts, and ids — not vibes.
    author-reply rate, timeline, and the most-discussed posts. These count
    the comments PD holds, which can be far fewer than the post's own
    `comments` metric (collected once, about three days after the post).
-   Its `capture` block gives the share held per platform; state both numbers
-   and that share, and say how many held comments you read, before
-   generalizing.
+   For one post, `summary_stats.total_comments` over that post's `comments`
+   in `post_metrics_latest` is the exact share held; quote that. The
+   `capture` block is a platform average (`stored_pct` against the
+   platform's count today, `collection_pct` at collection), so use it for a
+   topic or period, not one post. State both numbers and the share, and say
+   how many held comments you read, before generalizing.
 4. **Read actual comments**: `search_comments` with `post_id` (or `search`
    keywords), two passes:
    - `sort_by: "likes"` — what the audience endorses (top comments).
@@ -58,7 +61,10 @@ quotes, counts, and ids — not vibes.
    the root plus every reply, oldest first — but a popular comment can have
    hundreds of replies. Check `replies_count` first (`sort_by:
    "replies_count"` lists the biggest threads); only page through
-   threads that are small or genuinely pivotal. `is_author_reply: true` in `search_comments` finds
+   threads that are small or genuinely pivotal. A thread's `total` counts
+   the root too. Every reply row carries `parent_comment_text`, so a reply
+   found by a likes or keyword pass shows what it answers without paging
+   its thread. `is_author_reply: true` in `search_comments` finds
    where the creator engaged.
 6. **Who's driving it**: for recurring usernames, `list_commenters` with
    `commenter_id` (from the comment) gives their profile row and
@@ -69,7 +75,8 @@ quotes, counts, and ids — not vibes.
    repeat commenters, `get_audience` (`creator_id` or `account_id`, dates)
    returns the superfans, a bot-like share and a `core_verdict`
    (`organic` / `orchestrated` / `too_few`) in one call — use it before
-   calling a reaction coordinated. For voices that span several of the
+   calling a reaction coordinated. Its result is large (tens of thousands
+   of characters, mostly `words`): one call per subject, never a loop. For voices that span several of the
    dataset's accounts, `get_cross_account_commenters` (tag-scoped,
    `min_accounts`, dates) finds them in one call instead of many
    `search_comments` passes.
