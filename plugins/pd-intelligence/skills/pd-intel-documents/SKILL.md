@@ -168,8 +168,8 @@ moves each item on its own and reports `failures` per item; check them.
   description **and body** (English stemming, last word as a prefix); results
   come best match first and each row carries a `snippet` of the matching
   words. `limit` defaults to 50. Drafts never appear. Rows include
-  `folder_id`, `size_bytes` and `version` (the `expected_version` to pass
-  when you revise).
+  `owner_email`, `folder_id`, `is_global`, `size_bytes` and `version` (the
+  `expected_version` to pass when you revise).
 - `read_document(document_id)` returns that metadata plus `content`, the
   whole body as text, in one call. Check `size_bytes` from `list_documents`
   first: bodies run up to several MB, and when the `snippet` already answers
@@ -212,10 +212,13 @@ or source links in it.
   were **not** notified and hand over `reader_url`.
 - **Find one you published earlier:** `list_documents` with a `query` on the
   title → `read_document` if you need the body back.
-- **Revise in place:** find the `id` (it's in the publish response; otherwise
-  the user can read it from the document's dashboard URL) →
-  `publish_document` with `document_id`, omitting `mime_type`.
+- **Revise in place:** find the `id` and `version` (both are in the publish
+  response; otherwise `list_documents` with a `query` on the title) →
+  `publish_document` with `document_id` and `expected_version`, omitting
+  `mime_type`.
 - **Audience audit:** `get_document_sharing` → report visibility,
-  datasets, and (if owner) recipients and public link.
+  datasets, organizations, `is_global`, (if owner) recipients and public
+  link, and the `folder` audience: an empty `shared_with` does not mean
+  unshared when the folder passes people, datasets or organizations down.
 - **Lock down:** `share_document` with `visibility: "private"` and/or
   `remove_*` facets; warn that a revoked public link is dead permanently.
