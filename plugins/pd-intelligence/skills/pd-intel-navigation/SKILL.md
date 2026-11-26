@@ -118,6 +118,11 @@ before each of these calls**, naming the account or post and the consequence:
   for. `delete_email` and `remove_email_subscriber` are deletes.
   `send_email_test` emails you and any `also_send_to` addresses, and
   `discard_email_edition` throws away a waiting edition for good.
+- The `admin_*` tools change who can see and do what (users, organizations,
+  dataset access, capabilities, entitlements, seat and email limits). The ones
+  that take access away preview first: call without `expected_people`, show the
+  user `people_affected`, and call again with that count only after their yes.
+  `admin_add_user` and `admin_add_org_members` send invite emails.
 
 The account and post tools are covered in the `pd-intel-creators` skill.
 
@@ -190,6 +195,7 @@ Distribute puts it in PD Docs. Curation (`pd-intel-tagging`), bulk extraction
 | Custom emails | `list_email_places` **first**, then `list_emails`, `get_email`, `create_email` (always saved Off), `preview_email` (runs the AI writer, 2 per minute), `update_email` (`is_enabled: true` turns it On — show a preview and get a go-ahead first); organization emails also use `get_org_email_context`, `list_email_editions`, `get_email_edition`, `send_email_edition` (OAuth only). `send_*` tools send for real — never without an explicit yes |
 | Broadcasts to PD users (no `list_email_places` step) | `create_broadcast_draft`, open `preview_url`, `send_broadcast_test`, then `send_broadcast` with `expected_recipients` = the draft's `reach` from `list_broadcasts`, only after an explicit yes; `list_broadcast_recipients` before `retry_broadcast` |
 | News coverage, media framing, headline trends | `get_news_briefing`, `list_news_dates`, `get_news_outlet`, `get_news_roundup`, `get_news_trend`, `get_news_word_cloud` — **no `dataset_id`**; global, need the `news` entitlement, may be absent from your tools entirely; see the `pd-intel-news` skill |
+| Who has access, users, organizations, capabilities | `admin_get_user_access`, `admin_get_dataset_access`, `admin_get_organization`, `admin_list_users`, `admin_list_organizations`, `admin_permission_catalog` read; the other `admin_*` tools are **writes** (preview with no `expected_people` first, then a yes) and appear only for admins |
 | Podcast people, episodes, transcripts | `podiverse_search_people`, `podiverse_get_person_activity`, `podiverse_get_podcast_episodes`, `podiverse_get_episode_transcript` — **no `dataset_id`**; global, need the `Podiverse-MCP` entitlement, and are absent from your tool list entirely without it |
 
 ## Pitfalls (verified against live data)
@@ -221,5 +227,11 @@ Distribute puts it in PD Docs. Curation (`pd-intel-tagging`), bulk extraction
 - **Tags come in two kinds** (permanent and CLAI tags) and are scoped per
   dataset. Filter by `tag_names`/`clai_tag_names` — names resolve within the
   dataset. Account tag filters inherit from the parent creator.
+- **A read that times out or says "temporarily unavailable"** is not an
+  empty answer. Retry once a few minutes later, one call at a time; if it
+  fails again, get the number another way (`run_analytics_sql` `count(*)` with
+  `date_from`/`date_to` for posts, `search_comments` `total` for comments) and
+  say which tool you used. A timed-out **write** may have run: check its state
+  before calling it again.
 - **Cite your sources**: include `post_url` and usernames when referencing
   specific posts so humans can verify.
