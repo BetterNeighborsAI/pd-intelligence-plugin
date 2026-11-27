@@ -149,12 +149,19 @@ Returns `{available, discovered, dates, total_headlines, terms, ecosystems}`.
 row is `{term, trend_score, total, daily, by_ecosystem}`.
 
 - **Normalize before comparing days.** Headline volume varies day to day.
-  Divide `daily` by `total_headlines` for a share of the day's headlines.
+  `total_headlines` is a per-day list aligned to `dates`, and it follows the
+  `headlines` filter (`primary` counts only top-of-page stories, a small subset). Divide `daily`
+  by the same call's `total_headlines`, day by day, for a share of the day's
+  headlines; never mix a `primary` count with an `all` denominator.
 - **`by_ecosystem` is sparse** — an ecosystem that never used the term is
   omitted, not listed with zeros.
 - **Discovery surfaces noise too**: names from a single story, a phrase that
   appeared five times. Check `total` and read the underlying headlines
   (`get_news_outlet`, or the day's briefing) before calling it a trend.
+- **Discovery splits one story into overlapping phrases** ("jensen huang",
+  "jensen huang's", "huang's return"). Merge them into one story before
+  ranking or counting trends, and don't add their totals: the same headline
+  is counted under each phrase.
 
 ### `get_news_word_cloud` — weighted headline words
 
@@ -170,6 +177,8 @@ words: [{text, weight}]}`.
 - Check `headline_count` before reading anything into a cloud. One day of
   `primary` headlines for a single ecosystem can rest on a handful of
   headlines; widen to `days: 7` or `headlines: "all"` if it does.
+  `available: true` with an empty `words` list means the scope had too few
+  headlines to weigh, not that it used no words: widen the same way.
 - To compare ecosystems, call once per ecosystem with `method: "distinctive"`
   and set the clouds side by side, each in its scope's `color`.
 - Words come from everything on the front page, so non-news sections
@@ -203,7 +212,9 @@ words: [{text, weight}]}`.
    line them up **by date**:
    1. `get_news_trend` with `terms` over the window — note the `dates`.
    2. `list_datasets`, then for the same terms and dates `run_analytics_sql`
-      on `posts` (`post_text ILIKE '%term%'`), with the window passed as the
+      on `posts` (`strip_accents(post_text) ILIKE '%term%'`, the term typed
+      without accents: plain `ILIKE` misses "Ábrego García" when searching
+      "abrego garcia", which loses Spanish-language posts), with the window passed as the
       `date_from`/`date_to` arguments. Group on the Eastern Time day,
       `CAST(timezone('America/New_York', p.post_timestamp) AS DATE)`, not
       `CAST(post_timestamp AS DATE)`: the window is ET days but
