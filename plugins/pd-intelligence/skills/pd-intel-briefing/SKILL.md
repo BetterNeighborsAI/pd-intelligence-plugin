@@ -37,7 +37,8 @@ mandatory template — but never pad with unverified claims.
    They always cover the last N days ending today, independent of
    `date_from`/`date_to`, and each `value` is the all-time total, not the
    period's count. For a period that ended before today, compare two windowed
-   `get_totals` calls (the period and the one before it) instead.
+   `get_totals` calls (the period and the one before it) instead, made one
+   after the other: concurrent `get_totals` calls can time out.
 3. **Narrative**: the stored daily brief is the `daily_summaries` table in
    `run_analytics_sql` — `SELECT summary_date, narrative_text, top_posts,
    top_creators, top_accounts FROM daily_summaries ORDER BY summary_date DESC

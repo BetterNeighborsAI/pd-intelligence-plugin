@@ -82,7 +82,10 @@ it into the spine, whatever format you are about to render.
   and each `value` is the dataset's all-time total, not the period's count. For
   a past period (last week, last month), take the KPI from the windowed
   top-level fields and get the comparison from a second `get_totals` call on
-  the prior window of the same length.
+  the prior window of the same length. Make the two calls one after the
+  other, not in parallel: concurrent `get_totals` calls can time out where
+  the same calls run singly return. If one still times out, use the fallback
+  in `pd-intel-navigation` and name the tool in the method note.
 
 ## Fourth: render
 
